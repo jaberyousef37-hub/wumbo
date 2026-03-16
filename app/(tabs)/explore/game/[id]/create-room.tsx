@@ -21,13 +21,28 @@ function generateRoomCode() {
 }
 
 export default function CreateRoomScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, code, players } = useLocalSearchParams<{ id: string; code?: string; players?: string }>();
   const router = useRouter();
 
   const gameName = id ? GAME_NAMES[id] ?? 'Game' : 'Game';
-  const roomCode = useMemo(() => generateRoomCode(), []);
 
-  const slots = ['You', 'Waiting for player 2…', 'Waiting for player 3…', 'Waiting for player 4…'];
+  const roomCode = useMemo(
+    () => (typeof code === 'string' && code.length === 4 ? code : generateRoomCode()),
+    [code]
+  );
+
+  const initialPlayersCount = typeof players === 'string' ? Number(players) || 1 : 1;
+  const currentPlayers = Math.max(1, Math.min(initialPlayersCount, 4));
+
+  const baseNames = ['You', 'Alex', 'Jordan', 'Sam'];
+  const slots: string[] = [];
+  for (let i = 0; i < 4; i += 1) {
+    if (i < currentPlayers) {
+      slots.push(baseNames[i] ?? `Player ${i + 1}`);
+    } else {
+      slots.push(`Waiting for player ${i + 1}…`);
+    }
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -88,8 +103,9 @@ export default function CreateRoomScreen() {
               <ThemedText style={styles.leaveText}>Leave Room</ThemedText>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.startButton}
+              style={[styles.startButton, currentPlayers < 2 && styles.startButtonDisabled]}
               activeOpacity={0.8}
+              disabled={currentPlayers < 2}
               onPress={() => {
                 // Placeholder: starting the game would go here
               }}
@@ -224,6 +240,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#F6E05E',
     paddingVertical: 14,
     alignItems: 'center',
+  },
+  startButtonDisabled: {
+    opacity: 0.5,
   },
   startText: {
     fontSize: 16,

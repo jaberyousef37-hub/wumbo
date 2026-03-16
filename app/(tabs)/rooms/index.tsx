@@ -63,30 +63,16 @@ export default function RoomsScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.actionsRow}>
+          <View style={styles.section}>
+            <ThemedText style={styles.sectionTitle}>Random Match</ThemedText>
             <TouchableOpacity
               style={styles.actionPrimary}
               activeOpacity={0.8}
               onPress={() => {
-                // Placeholder: could route to a random lobby in the future
+                // Local-only placeholder: could pick a random room or game
               }}
             >
-              <ThemedText style={styles.actionPrimaryText}>Random Match</ThemedText>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.actionsRow}>
-            <TouchableOpacity style={styles.actionSecondary} activeOpacity={0.8}>
-              <ThemedText style={styles.actionSecondaryText}>Join Public Room</ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.actionSecondary}
-              activeOpacity={0.8}
-              onPress={() =>
-                router.push('/(tabs)/explore/game/uno/create-room')
-              }
-            >
-              <ThemedText style={styles.actionSecondaryText}>Create Private Room</ThemedText>
+              <ThemedText style={styles.actionPrimaryText}>Find Random Match</ThemedText>
             </TouchableOpacity>
           </View>
 
@@ -118,6 +104,23 @@ export default function RoomsScreen() {
                 </TouchableOpacity>
               </ThemedView>
             ))}
+          </View>
+
+          <View style={styles.section}>
+            <ThemedText style={styles.sectionTitle}>Create Private Room</ThemedText>
+            <TouchableOpacity
+              style={styles.actionSecondary}
+              activeOpacity={0.8}
+              onPress={() => {
+                const code = Math.floor(1000 + Math.random() * 9000).toString();
+                router.push({
+                  pathname: '/(tabs)/explore/game/uno/create-room',
+                  params: { id: 'uno', code, players: '1' },
+                });
+              }}
+            >
+              <ThemedText style={styles.actionSecondaryText}>Start New Private UNO Room</ThemedText>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.section}>
