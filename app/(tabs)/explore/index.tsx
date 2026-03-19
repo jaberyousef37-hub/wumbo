@@ -1,323 +1,221 @@
 import { useRouter } from 'expo-router';
-import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BaseCard } from '@/components/base-card';
+import { PrimaryButton } from '@/components/primary-button';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { useTheme } from '@/contexts/theme-context';
 import { Colors } from '@/constants/theme';
+import { Spacing } from '@/constants/spacing';
 
-const CARD_GAMES = [
+const GAMES = [
   {
-    id: 'uno',
-    name: 'UNO',
-    description: 'Match colors and numbers. Empty your hand first.',
-    players: '2–6 players',
-    icon: '🃏',
-    accent: '#F6E05E', // yellow
-  },
-  {
-    id: 'bs',
-    name: 'BS',
-    description: 'Bluff, call BS, and get rid of your cards.',
-    players: '3–6 players',
-    icon: '🤥',
-    accent: '#FC8181', // red
-  },
-];
-
-const BOARD_GAMES = [
-  {
-    id: 'chess',
+    id: '1',
     name: 'Chess',
-    description: 'Classic strategy. Outsmart your opponent.',
-    players: '2 players',
-    icon: '♟️',
-    accent: '#B794F6', // purple
+    emoji: '♟️',
+    subtitle: 'Classic strategy. Outsmart your opponent.',
+  },
+  {
+    id: '2',
+    name: 'Uno',
+    emoji: '🃏',
+    subtitle: 'Match colors and numbers. First to empty your hand wins.',
+  },
+  {
+    id: '3',
+    name: 'Trivia',
+    emoji: '❓',
+    subtitle: 'Test your knowledge across categories.',
+  },
+  {
+    id: '4',
+    name: 'Tic Tac Toe',
+    emoji: '⭕',
+    subtitle: 'Get three in a row. Quick and fun.',
   },
 ];
 
-const PARTY_GAMES = [
-  {
-    id: 'trivia',
-    name: 'Trivia',
-    description: 'Test your knowledge across fun categories.',
-    players: '1–6 players',
-    icon: '❓',
-    accent: '#68D391', // green
-  },
-];
+const FEATURED_GAME = GAMES[0];
+
+function GameCard({ game, index }: { game: (typeof GAMES)[0]; index: number }) {
+  const router = useRouter();
+
+  const handlePress = () => {
+    if (game.id === '1') router.push('/(tabs)/explore/chess');
+    else if (game.id === '2') router.push('/(tabs)/explore/uno');
+    else if (game.id === '3') router.push('/(tabs)/explore/trivia');
+    else if (game.id === '4') router.push('/(tabs)/explore/tictactoe-details');
+  };
+
+  return (
+    <Animated.View entering={FadeInDown.delay(index * 80).springify().damping(16)}>
+      <BaseCard onPress={handlePress} showChevron>
+        <View style={styles.gameRow}>
+          <View style={styles.gameIcon}>
+            <ThemedText style={styles.emoji}>{game.emoji}</ThemedText>
+          </View>
+          <View style={styles.gameContent}>
+            <ThemedText type="subtitle" style={styles.gameName}>
+              {game.name}
+            </ThemedText>
+            <ThemedText
+              style={styles.subtitle}
+              lightColor={Colors.light.icon}
+              darkColor={Colors.dark.icon}
+              numberOfLines={2}
+            >
+              {game.subtitle}
+            </ThemedText>
+          </View>
+        </View>
+      </BaseCard>
+    </Animated.View>
+  );
+}
 
 export default function GamesScreen() {
   const router = useRouter();
+  const { isDark } = useTheme();
+  const palette = isDark ? Colors.dark : Colors.light;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <ThemedView style={styles.container}>
+    <SafeAreaView
+      style={[styles.safe, { backgroundColor: palette.background }]}
+      edges={['top']}
+    >
+      <Animated.View entering={FadeIn.duration(400)} style={styles.container}>
         <View style={styles.header}>
           <ThemedText type="title">Games</ThemedText>
         </View>
+
         <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-          <View style={styles.section}>
-            <ThemedText style={styles.sectionTitle}>Popular Now</ThemedText>
-            <ThemedView
-              style={[styles.gameCard, { borderLeftColor: CARD_GAMES[0].accent }]}
-              lightColor={Colors.light.card}
-              darkColor={Colors.dark.card}
+          {/* FEATURED GAME — dominates the screen */}
+          <Animated.View entering={FadeInDown.delay(0).springify().damping(16)}>
+            <Pressable
+              onPress={() => router.push('/(tabs)/explore/chess')}
+              style={({ pressed }) => [
+                styles.featuredCard,
+                { backgroundColor: palette.tint },
+                pressed && styles.pressed,
+              ]}
             >
-              <View style={[styles.leftAccent, { backgroundColor: CARD_GAMES[0].accent }]} />
-              <View style={styles.rowContent}>
-                <View style={styles.gameIcon}>
-                  <ThemedText style={styles.emoji}>{CARD_GAMES[0].icon}</ThemedText>
+              <View style={styles.featuredContent}>
+                <View style={styles.featuredIcon}>
+                  <ThemedText style={styles.featuredEmoji}>{FEATURED_GAME.emoji}</ThemedText>
                 </View>
-                <View style={styles.gameContent}>
-                  <ThemedText type="subtitle" style={styles.gameName}>
-                    {CARD_GAMES[0].name}
+                <View style={styles.featuredText}>
+                  <ThemedText style={styles.featuredLabel}>Featured Game</ThemedText>
+                  <ThemedText style={styles.featuredName}>{FEATURED_GAME.name}</ThemedText>
+                  <ThemedText style={styles.featuredSubtitle}>
+                    {FEATURED_GAME.subtitle}
                   </ThemedText>
-                  <ThemedText
-                    style={styles.subtitle}
-                    lightColor={Colors.light.icon}
-                    darkColor={Colors.dark.icon}
-                    numberOfLines={2}
-                  >
-                    {CARD_GAMES[0].description}
-                  </ThemedText>
-                  <ThemedText style={styles.players}>{CARD_GAMES[0].players}</ThemedText>
+                  <PrimaryButton
+                    label="Play Now"
+                    onPress={() => router.push('/(tabs)/explore/chess')}
+                    variant="inverted"
+                    style={styles.featuredButton}
+                  />
                 </View>
               </View>
-              <TouchableOpacity
-                style={styles.playButton}
-                activeOpacity={0.7}
-                onPress={() =>
-                  router.push(`/(tabs)/explore/game/${CARD_GAMES[0].id}/create-room`)
-                }
-              >
-                <ThemedText style={styles.playText}>Play</ThemedText>
-              </TouchableOpacity>
-            </ThemedView>
-          </View>
+            </Pressable>
+          </Animated.View>
 
-          <View style={styles.section}>
-            <ThemedText style={styles.sectionTitle}>Card Games</ThemedText>
-            {CARD_GAMES.map((game) => (
-              <ThemedView
-                key={game.id}
-                style={[styles.gameCard, { borderLeftColor: game.accent }]}
-                lightColor={Colors.light.card}
-                darkColor={Colors.dark.card}
-              >
-                <View style={[styles.leftAccent, { backgroundColor: game.accent }]} />
-                <View style={styles.rowContent}>
-                  <View style={styles.gameIcon}>
-                    <ThemedText style={styles.emoji}>{game.icon}</ThemedText>
-                  </View>
-                  <View style={styles.gameContent}>
-                    <ThemedText type="subtitle" style={styles.gameName}>
-                      {game.name}
-                    </ThemedText>
-                    <ThemedText
-                      style={styles.subtitle}
-                      lightColor={Colors.light.icon}
-                      darkColor={Colors.dark.icon}
-                      numberOfLines={2}
-                    >
-                      {game.description}
-                    </ThemedText>
-                    <ThemedText style={styles.players}>{game.players}</ThemedText>
-                  </View>
-                </View>
-                <TouchableOpacity
-                  style={styles.playButton}
-                  activeOpacity={0.7}
-                  onPress={() => router.push(`/(tabs)/explore/game/${game.id}/create-room`)}
-                >
-                  <ThemedText style={styles.playText}>Play</ThemedText>
-                </TouchableOpacity>
-              </ThemedView>
-            ))}
-          </View>
-
-          <View style={styles.section}>
-            <ThemedText style={styles.sectionTitle}>Board Games</ThemedText>
-            {BOARD_GAMES.map((game) => (
-              <ThemedView
-                key={game.id}
-                style={[styles.gameCard, { borderLeftColor: game.accent }]}
-                lightColor={Colors.light.card}
-                darkColor={Colors.dark.card}
-              >
-                <View style={[styles.leftAccent, { backgroundColor: game.accent }]} />
-                <View style={styles.rowContent}>
-                  <View style={styles.gameIcon}>
-                    <ThemedText style={styles.emoji}>{game.icon}</ThemedText>
-                  </View>
-                  <View style={styles.gameContent}>
-                    <ThemedText type="subtitle" style={styles.gameName}>
-                      {game.name}
-                    </ThemedText>
-                    <ThemedText
-                      style={styles.subtitle}
-                      lightColor={Colors.light.icon}
-                      darkColor={Colors.dark.icon}
-                      numberOfLines={2}
-                    >
-                      {game.description}
-                    </ThemedText>
-                    <ThemedText style={styles.players}>{game.players}</ThemedText>
-                  </View>
-                </View>
-                <TouchableOpacity
-                  style={styles.playButton}
-                  activeOpacity={0.7}
-                  onPress={() => router.push(`/(tabs)/explore/game/${game.id}/create-room`)}
-                >
-                  <ThemedText style={styles.playText}>Play</ThemedText>
-                </TouchableOpacity>
-              </ThemedView>
-            ))}
-          </View>
-
-          <View style={styles.section}>
-            <ThemedText style={styles.sectionTitle}>Party Games</ThemedText>
-            {PARTY_GAMES.map((game) => (
-              <ThemedView
-                key={game.id}
-                style={[styles.gameCard, { borderLeftColor: game.accent }]}
-                lightColor={Colors.light.card}
-                darkColor={Colors.dark.card}
-              >
-                <View style={[styles.leftAccent, { backgroundColor: game.accent }]} />
-                <View style={styles.rowContent}>
-                  <View style={styles.gameIcon}>
-                    <ThemedText style={styles.emoji}>{game.icon}</ThemedText>
-                  </View>
-                  <View style={styles.gameContent}>
-                    <ThemedText type="subtitle" style={styles.gameName}>
-                      {game.name}
-                    </ThemedText>
-                    <ThemedText
-                      style={styles.subtitle}
-                      lightColor={Colors.light.icon}
-                      darkColor={Colors.dark.icon}
-                      numberOfLines={2}
-                    >
-                      {game.description}
-                    </ThemedText>
-                    <ThemedText style={styles.players}>{game.players}</ThemedText>
-                  </View>
-                </View>
-                <TouchableOpacity
-                  style={styles.playButton}
-                  activeOpacity={0.7}
-                  onPress={() => router.push(`/(tabs)/explore/game/${game.id}/create-room`)}
-                >
-                  <ThemedText style={styles.playText}>Play</ThemedText>
-                </TouchableOpacity>
-              </ThemedView>
-            ))}
-          </View>
+          <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
+            All Games
+          </ThemedText>
+          {GAMES.map((game, index) => (
+            <GameCard key={game.id} game={game} index={index + 1} />
+          ))}
         </ScrollView>
-      </ThemedView>
+      </Animated.View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: Colors.dark.background,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: Colors.dark.background,
-  },
+  safe: { flex: 1 },
+  container: { flex: 1 },
   header: {
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 20,
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.md,
   },
-  scroll: {
-    flex: 1,
-  },
+  scroll: { flex: 1 },
   scrollContent: {
-    paddingHorizontal: 24,
-    paddingBottom: 24,
-    gap: 24,
+    paddingHorizontal: Spacing.md,
+    paddingBottom: Spacing.lg,
   },
-  section: {
-    gap: 12,
+  featuredCard: {
+    borderRadius: 16,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  gameCard: {
+  featuredContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 20,
-    paddingHorizontal: 20,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: Colors.dark.cardBorder,
-    borderLeftWidth: 4,
-    backgroundColor: Colors.dark.card,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.23,
-    shadowRadius: 4.62,
-    elevation: 4,
   },
-  leftAccent: {
-    width: 4,
-    borderRadius: 999,
-    marginRight: 12,
+  featuredIcon: {
+    width: 96,
+    height: 96,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
   },
-  rowContent: {
+  featuredEmoji: { fontSize: 48 },
+  featuredText: { flex: 1 },
+  featuredLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.9)',
+    letterSpacing: 1,
+    marginBottom: Spacing.xs,
+  },
+  featuredName: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: Spacing.xs,
+  },
+  featuredSubtitle: {
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.95)',
+    lineHeight: 22,
+    marginBottom: Spacing.sm,
+  },
+  featuredButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#fff',
+  },
+  sectionTitle: {
+    fontSize: 16,
+    marginBottom: Spacing.sm,
+  },
+  gameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
   },
   gameIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: 'rgba(183, 148, 246, 0.12)',
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: 'rgba(183, 148, 246, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
+    marginRight: Spacing.sm,
   },
-  emoji: {
-    fontSize: 26,
-  },
-  gameContent: {
-    flex: 1,
-    minWidth: 0,
-    justifyContent: 'center',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  gameName: {
-    marginBottom: 6,
-  },
-  subtitle: {
-    fontSize: 13,
-    lineHeight: 18,
-    opacity: 0.9,
-  },
-  players: {
-    fontSize: 13,
-    opacity: 0.9,
-    marginTop: 8,
-  },
-  playButton: {
-    backgroundColor: Colors.dark.tint,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 999,
-    marginLeft: 12,
-  },
-  playText: {
-    color: Colors.dark.background,
-    fontSize: 15,
-    fontWeight: '600',
-  },
+  emoji: { fontSize: 28 },
+  gameContent: { flex: 1, minWidth: 0 },
+  gameName: { marginBottom: Spacing.xs },
+  subtitle: { fontSize: 13, lineHeight: 18 },
+  pressed: { opacity: 0.95 },
 });
-

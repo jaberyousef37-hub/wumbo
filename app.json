@@ -9,7 +9,16 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSExceptionDomains": {
+            "supabase.co": {
+              "NSIncludesSubdomains": true
+            }
+          }
+        }
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -27,15 +36,22 @@
     },
     "plugins": [
       "expo-router",
+      "expo-sqlite",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Wumbo uses your photos for your profile picture."
+        }
+      ],
+        [
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#1a0a2e",
           "dark": {
-            "backgroundColor": "#000000"
+            "backgroundColor": "#1a0a2e"
           }
         }
       ]

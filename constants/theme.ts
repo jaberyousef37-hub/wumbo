@@ -8,14 +8,16 @@ const tintColor = '#B794F6';
 
 export const Colors = {
   light: {
-    text: '#E9E0F5',
-    background: '#1a0a2e',
-    tint: tintColor,
-    icon: '#9F7AEA',
-    tabIconDefault: '#6B46C1',
-    tabIconSelected: tintColor,
-    card: '#2d1b4e',
-    cardBorder: '#4a2c6d',
+    text: '#2d1b4e',
+    background: '#ffffff',
+    tint: '#8B5CF6',
+    icon: '#7C3AED',
+    tabIconDefault: '#9CA3AF',
+    tabIconSelected: '#8B5CF6',
+    card: '#f8f5fc',
+    cardBorder: '#E9E3F0',
+    accentPink: '#EC4899',
+    accentYellow: '#FBBF24',
   },
   dark: {
     text: '#E9E0F5',
@@ -26,6 +28,8 @@ export const Colors = {
     tabIconSelected: tintColor,
     card: '#2d1b4e',
     cardBorder: '#4a2c6d',
+    accentPink: '#F687B3',
+    accentYellow: '#F6E05E',
   },
 };
 

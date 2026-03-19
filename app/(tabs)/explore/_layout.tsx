@@ -1,13 +1,16 @@
 import { Stack } from 'expo-router';
 
-export default function GamesLayout() {
+export default function ExploreLayout() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
-      <Stack.Screen name="game/[id]" />
-      <Stack.Screen name="game/[id]/create-room" />
-      <Stack.Screen name="game/[id]/join-room" />
+      <Stack.Screen name="tictactoe-details" />
+      <Stack.Screen name="lobby" />
+      <Stack.Screen name="join-room" />
+      <Stack.Screen name="tictactoe" />
+      <Stack.Screen name="trivia" />
+      <Stack.Screen name="chess" />
+      <Stack.Screen name="uno" />
     </Stack>
   );
 }
-

@@ -20,7 +20,8 @@ const MAPPING = {
   'chevron.right': 'chevron-right',
   'bubble.left.and.bubble.right.fill': 'chat',
   'gamecontroller.fill': 'videogame-asset',
-  'person.3.fill': 'group',
+  'person.2.fill': 'people',
+  'person.fill': 'person',
 } as IconMapping;
 
 /**
