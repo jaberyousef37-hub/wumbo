@@ -3,8 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,19 +13,23 @@ import {
   View,
 } from 'react-native';
 import Animated, { SlideInUp } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Avatar } from '@/components/avatar';
 import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/contexts/theme-context';
-import { Colors } from '@/constants/theme';
+import { AppColors, Colors } from '@/constants/theme';
+import { BUTTON_HEIGHT, Spacing } from '@/constants/spacing';
+import { CHALLENGE_GAME_PICKS } from '@/lib/challenge-games';
+import { GAME_NAMES, generateRoomCode } from '@/lib/room-utils';
 import { supabase } from '@/lib/supabase';
 
 const SENDER_NAME = 'Guest';
 
 const ROOM_NAMES: Record<string, string> = {
-  '1': 'General',
-  '2': 'Friends',
-  '3': 'Gaming',
+  '1': 'Alex Rivera',
+  '2': 'Sam Okonkwo',
+  '3': 'Jordan & Riley',
 };
 
 type Message = {
@@ -62,6 +65,18 @@ function toDisplayMessage(msg: Message): DisplayMessage {
   };
 }
 
+const INPUT_BAR_HEIGHT = 44;
+/** paddingVertical 6+6 on input row + bar min height + gap above keyboard */
+const INPUT_AREA_BOTTOM_RESERVE = INPUT_BAR_HEIGHT + 12 + 8;
+
+function initialsForRoomName(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase() || '?';
+}
+
 export default function ChatRoomScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -70,20 +85,19 @@ export default function ChatRoomScreen() {
   const roomId = String(id ?? '1');
   const roomName = ROOM_NAMES[roomId] ?? 'Chat';
 
-  console.log('[Chat] Screen opened, roomId:', roomId, 'id param:', id);
-
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
+  const [showGamePicker, setShowGamePicker] = useState(false);
   const [useLocalOnly, setUseLocalOnly] = useState(false);
   const localIdRef = useRef(0);
   const scrollRef = useRef<ScrollView>(null);
+  const sendLockRef = useRef(false);
 
   // Fetch initial messages from Supabase (persisted between sessions)
   useEffect(() => {
     async function fetchMessages() {
-      console.log('[Chat] Fetching messages for room_id:', roomId);
       try {
         const { data, error } = await supabase
           .from('messages')
@@ -92,19 +106,16 @@ export default function ChatRoomScreen() {
           .order('created_at', { ascending: true });
 
         if (error) {
-          console.log('[Chat] Fetch error:', error.message, error);
           setUseLocalOnly(true);
           setMessages([]);
           return;
         }
         const display = (data ?? []).map(toDisplayMessage);
-        console.log('[Chat] Fetched', display.length, 'messages for room', roomId);
         setMessages(display);
         if (display.length > 0) {
           setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 50);
         }
-      } catch (err) {
-        console.log('[Chat] Fetch exception:', err);
+      } catch {
         setUseLocalOnly(true);
         setMessages([]);
       } finally {
@@ -117,12 +128,8 @@ export default function ChatRoomScreen() {
 
   // Subscribe to real-time inserts (only when Supabase is available)
   useEffect(() => {
-    if (useLocalOnly) {
-      console.log('[Chat] Skipping realtime subscription (local-only mode)');
-      return;
-    }
+    if (useLocalOnly) return;
 
-    console.log('[Chat] Subscribing to realtime for room_id:', roomId);
     const channel = supabase
       .channel(`messages:room_id=eq.${roomId}`)
       .on(
@@ -135,7 +142,6 @@ export default function ChatRoomScreen() {
         },
         (payload) => {
           const newRow = payload.new as Message;
-          console.log('[Chat] Realtime INSERT received:', newRow?.id, newRow?.content?.slice(0, 30));
           setMessages((prev) => {
             const exists = prev.some((m) => m.id === newRow.id);
             if (exists) return prev;
@@ -152,189 +158,340 @@ export default function ChatRoomScreen() {
     };
   }, [roomId, useLocalOnly]);
 
-  const handleSend = useCallback(async () => {
-    const trimmed = inputText.trim();
-    if (!trimmed || isSending) return;
+  const submitMessage = useCallback(
+    async (trimmed: string, clearInput: boolean) => {
+      if (!trimmed || sendLockRef.current) return;
+      sendLockRef.current = true;
+      setIsSending(true);
+      if (clearInput) setInputText('');
 
-    setIsSending(true);
-    setInputText('');
+      try {
+        if (useLocalOnly) {
+          localIdRef.current += 1;
+          const localMsg: DisplayMessage = {
+            id: `local-${localIdRef.current}`,
+            text: trimmed,
+            isSent: true,
+            timestamp: 'Just now',
+          };
+          setMessages((prev) => [...prev, localMsg]);
+          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+          return;
+        }
 
-    if (useLocalOnly) {
-      localIdRef.current += 1;
-      const localMsg: DisplayMessage = {
-        id: `local-${localIdRef.current}`,
-        text: trimmed,
-        isSent: true,
-        timestamp: 'Just now',
-      };
-      setMessages((prev) => [...prev, localMsg]);
-      setIsSending(false);
-      return;
-    }
+        const payload = { room_id: roomId, sender_name: SENDER_NAME, content: trimmed };
 
-    const payload = { room_id: roomId, sender_name: SENDER_NAME, content: trimmed };
-    console.log('[Chat] Sending to Supabase:', payload);
+        try {
+          const { data, error } = await supabase
+            .from('messages')
+            .insert(payload)
+            .select('id')
+            .single();
 
-    try {
-      const { data, error } = await supabase
-        .from('messages')
-        .insert(payload)
-        .select('id')
-        .single();
-
-      if (error) {
-        console.log('[Chat] Insert error:', error.message, error);
-        setUseLocalOnly(true);
-        localIdRef.current += 1;
-        setMessages((prev) => [
-          ...prev,
-          { id: `local-${localIdRef.current}`, text: trimmed, isSent: true, timestamp: 'Just now' },
-        ]);
-      } else {
-        console.log('[Chat] Message saved to Supabase, id:', data?.id);
-        setMessages((prev) => [
-          ...prev,
-          { id: String(data?.id ?? `temp-${Date.now()}`), text: trimmed, isSent: true, timestamp: 'Just now' },
-        ]);
+          if (error) {
+            setUseLocalOnly(true);
+            localIdRef.current += 1;
+            setMessages((prev) => [
+              ...prev,
+              { id: `local-${localIdRef.current}`, text: trimmed, isSent: true, timestamp: 'Just now' },
+            ]);
+          } else {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: String(data?.id ?? `temp-${Date.now()}`),
+                text: trimmed,
+                isSent: true,
+                timestamp: 'Just now',
+              },
+            ]);
+          }
+        } catch {
+          setUseLocalOnly(true);
+          localIdRef.current += 1;
+          setMessages((prev) => [
+            ...prev,
+            { id: `local-${localIdRef.current}`, text: trimmed, isSent: true },
+          ]);
+        }
+        setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+      } finally {
+        sendLockRef.current = false;
+        setIsSending(false);
       }
-    } catch (err) {
-      console.log('[Chat] Insert exception:', err);
-      setUseLocalOnly(true);
-      localIdRef.current += 1;
-      setMessages((prev) => [
-        ...prev,
-        { id: `local-${localIdRef.current}`, text: trimmed, isSent: true },
-      ]);
-    } finally {
-      setIsSending(false);
-    }
-  }, [inputText, roomId, isSending, useLocalOnly]);
+    },
+    [roomId, useLocalOnly]
+  );
+
+  const handleSend = useCallback(() => {
+    const trimmed = inputText.trim();
+    if (!trimmed) return;
+    void submitMessage(trimmed, true);
+  }, [inputText, submitMessage]);
+
+  const handlePickChallengeGame = useCallback(
+    async (gameType: string) => {
+      setShowGamePicker(false);
+      const code = generateRoomCode();
+      const gameName = GAME_NAMES[gameType] ?? gameType;
+      const text = `🎮 ${gameName} challenge! Join with code ${code} — Play → Join room.`;
+      await submitMessage(text, true);
+      router.push({
+        pathname: '/(tabs)/play/create-room',
+        params: {
+          challengeGame: gameType,
+          challengeCode: code,
+          challengeFriend: roomName,
+        },
+      });
+    },
+    [roomName, submitMessage, router]
+  );
 
   const { isDark } = useTheme();
   const palette = isDark ? Colors.dark : Colors.light;
 
+  const hasInput = inputText.trim().length > 0;
+
+  const listBottomPad = INPUT_AREA_BOTTOM_RESERVE + insets.bottom;
+
   return (
-    <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: palette.background, paddingBottom: insets.bottom }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-    >
-      {/* Flat header */}
-      <View style={[styles.header, { backgroundColor: palette.card, borderBottomColor: palette.cardBorder }]}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <MaterialIcons name="arrow-back" size={24} color={palette.text} />
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <ThemedText type="defaultSemiBold" style={styles.headerTitle}>
-            {roomName}
-          </ThemedText>
-          <View style={styles.onlineStatus}>
-            <View style={styles.onlineDot} />
-            <Text style={[styles.onlineText, { color: palette.icon }]}>Online</Text>
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <View style={[styles.main, { backgroundColor: palette.background }]}>
+        {/* Header - respects safe area */}
+        <View style={[styles.header, { backgroundColor: palette.card, borderBottomColor: palette.cardBorder }]}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backButton}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <MaterialIcons name="arrow-back" size={24} color={palette.text} />
+          </TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <ThemedText type="defaultSemiBold" style={styles.headerTitle}>
+              {roomName}
+            </ThemedText>
+            <View style={styles.onlineStatus}>
+              <View style={styles.onlineDot} />
+              <Text style={[styles.onlineText, { color: palette.icon }]}>Online</Text>
+            </View>
           </View>
         </View>
-      </View>
 
-      {/* Messages */}
-      {isLoading ? (
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator size="large" color={Colors.dark.tint} />
-        </View>
-      ) : (
-        <ScrollView
-          ref={scrollRef}
-          style={styles.messagesScroll}
-          contentContainerStyle={styles.messagesContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
-          {messages.map((msg) => (
-            <View
-              key={msg.id}
-              style={[styles.bubbleWrap, msg.isSent ? styles.bubbleWrapSent : styles.bubbleWrapReceived]}
-            >
-              <View
-                style={[
-                  styles.bubble,
-                  msg.isSent ? styles.bubbleSent : styles.bubbleReceived,
+        <View style={[styles.contentBelowHeader, { paddingBottom: listBottomPad }]}>
+        {isLoading ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator size="large" color={palette.tint} />
+          </View>
+        ) : messages.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <View style={styles.emptyAvatarWrap}>
+              <Avatar initials={initialsForRoomName(roomName)} size="xlarge" />
+            </View>
+            <ThemedText type="heading" style={styles.emptyRoomName}>
+              {roomName}
+            </ThemedText>
+            <ThemedText type="body" style={[styles.emptyTagline, { color: AppColors.muted }]}>
+              Be the first to say hello!
+            </ThemedText>
+            <View style={styles.quickActions}>
+              <Pressable
+                onPress={() => void submitMessage('Hi! 👋', false)}
+                disabled={isSending}
+                style={({ pressed }) => [
+                  styles.quickBtn,
+                  { backgroundColor: palette.tint, opacity: pressed ? 0.9 : 1 },
                 ]}
               >
-                <ThemedText
-                  style={[styles.bubbleText, msg.isSent && styles.bubbleTextSent]}
-                  darkColor={msg.isSent ? Colors.dark.background : undefined}
-                >
-                  {msg.text}
+                <ThemedText type="caption" style={styles.quickBtnText}>
+                  Say Hi 👋
                 </ThemedText>
-              </View>
-              {msg.timestamp && (
-                <Text style={[styles.timestamp, msg.isSent ? styles.timestampSent : styles.timestampReceived]}>
-                  {msg.timestamp}
-                </Text>
-              )}
+              </Pressable>
+              <Pressable
+                onPress={() => router.push('/(tabs)/play')}
+                style={({ pressed }) => [
+                  styles.quickBtn,
+                  styles.quickBtnOutline,
+                  {
+                    borderColor: palette.cardBorder,
+                    backgroundColor: palette.card,
+                    opacity: pressed ? 0.9 : 1,
+                  },
+                ]}
+              >
+                <ThemedText type="caption" style={[styles.quickBtnText, { color: palette.text }]}>
+                  Invite to Game 🎮
+                </ThemedText>
+              </Pressable>
             </View>
-          ))}
-        </ScrollView>
-      )}
+          </View>
+        ) : (
+          <ScrollView
+            ref={scrollRef}
+            style={styles.messagesScroll}
+            contentContainerStyle={[styles.messagesContent, { paddingBottom: 12 }]}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {messages.map((msg) => (
+              <View
+                key={msg.id}
+                style={[styles.bubbleWrap, msg.isSent ? styles.bubbleWrapSent : styles.bubbleWrapReceived]}
+              >
+                <View
+                  style={[
+                    styles.bubble,
+                    msg.isSent ? styles.bubbleSent : styles.bubbleReceived,
+                    msg.isSent
+                      ? { backgroundColor: palette.tint }
+                      : { backgroundColor: palette.card, borderColor: palette.cardBorder },
+                  ]}
+                >
+                  <ThemedText
+                    style={[styles.bubbleText, msg.isSent && styles.bubbleTextSent]}
+                    lightColor={msg.isSent ? '#FFFFFF' : undefined}
+                    darkColor={msg.isSent ? palette.background : undefined}
+                  >
+                    {msg.text}
+                  </ThemedText>
+                </View>
+                {msg.timestamp && (
+                  <Text
+                    style={[
+                      styles.timestamp,
+                      msg.isSent ? styles.timestampSent : styles.timestampReceived,
+                      { color: msg.isSent ? palette.text : palette.icon },
+                    ]}
+                  >
+                    {msg.timestamp}
+                  </Text>
+                )}
+              </View>
+            ))}
+          </ScrollView>
+        )}
+        </View>
 
-      {/* Input bar - WhatsApp/iMessage style */}
-      <Animated.View
-        entering={SlideInUp.delay(200).springify().damping(18)}
-        style={[styles.inputRow, { backgroundColor: palette.card, borderTopColor: palette.cardBorder }]}
-      >
-        <Pressable style={styles.inputIconBtn} onPress={() => {}}>
-          <MaterialIcons name="mic" size={24} color={palette.tint} />
-        </Pressable>
-        <TextInput
-          style={[styles.input, { backgroundColor: palette.background, borderColor: palette.cardBorder, color: palette.text }]}
-          placeholder="Type a message..."
-          placeholderTextColor={palette.tabIconDefault}
-          value={inputText}
-          onChangeText={setInputText}
-          multiline
-          maxLength={500}
-          returnKeyType="default"
-          blurOnSubmit={false}
-          editable={!isSending}
-        />
-        <Pressable style={styles.inputIconBtn} onPress={() => {}}>
-          <MaterialIcons name="emoji-emotions" size={24} color={palette.tint} />
-        </Pressable>
-        <TouchableOpacity
+        <Animated.View
+          entering={SlideInUp.delay(200).springify().damping(18)}
           style={[
-            styles.sendButton,
-            { backgroundColor: inputText.trim() && !isSending ? Colors.dark.tint : palette.cardBorder },
-            (!inputText.trim() || isSending) && styles.sendButtonDisabled,
+            styles.inputRow,
+            {
+              backgroundColor: palette.card,
+              borderTopColor: palette.cardBorder,
+              minHeight: INPUT_BAR_HEIGHT,
+              paddingBottom: insets.bottom,
+            },
           ]}
-          onPress={handleSend}
-          disabled={!inputText.trim() || isSending}
-          activeOpacity={0.7}
         >
-          {isSending ? (
-            <ActivityIndicator size="small" color={Colors.dark.background} />
-          ) : (
-            <MaterialIcons
-              name="send"
-              size={22}
-              color={inputText.trim() ? Colors.dark.background : palette.tabIconDefault}
-            />
-          )}
-        </TouchableOpacity>
-      </Animated.View>
-    </KeyboardAvoidingView>
+          <TouchableOpacity
+            style={[
+              styles.composeGameBtn,
+              {
+                backgroundColor: palette.background,
+                borderColor: palette.cardBorder,
+              },
+            ]}
+            onPress={() => setShowGamePicker(true)}
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+            accessibilityLabel="Pick a game to challenge"
+          >
+            <MaterialIcons name="sports-esports" size={22} color={palette.tint} />
+          </TouchableOpacity>
+          <TextInput
+            style={[
+              styles.input,
+              {
+                backgroundColor: palette.background,
+                borderColor: palette.cardBorder,
+                color: palette.text,
+              },
+            ]}
+            placeholder="Type a message..."
+            placeholderTextColor={palette.tabIconDefault}
+            value={inputText}
+            onChangeText={setInputText}
+            multiline
+            maxLength={500}
+            returnKeyType="default"
+            blurOnSubmit={false}
+            editable={!isSending}
+          />
+          <TouchableOpacity
+            style={[
+              styles.sendButton,
+              {
+                backgroundColor: hasInput && !isSending ? palette.tint : palette.cardBorder,
+              },
+            ]}
+            onPress={handleSend}
+            disabled={!hasInput || isSending}
+            activeOpacity={0.7}
+          >
+            {isSending ? (
+              <ActivityIndicator size="small" color={palette.background} />
+            ) : (
+              <MaterialIcons
+                name="send"
+                size={18}
+                color={hasInput ? palette.background : palette.tabIconDefault}
+              />
+            )}
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
+
+      <Modal visible={showGamePicker} animationType="slide" transparent>
+        <Pressable style={styles.pickerOverlay} onPress={() => setShowGamePicker(false)}>
+          <Pressable
+            style={[styles.pickerSheet, { backgroundColor: palette.background }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <ThemedText type="title" style={styles.pickerTitle}>
+              Challenge {roomName}
+            </ThemedText>
+            <ThemedText type="caption" style={[styles.pickerHint, { color: palette.icon }]}>
+              We&apos;ll post the room code here and open your lobby.
+            </ThemedText>
+            {CHALLENGE_GAME_PICKS.map((game) => (
+              <Pressable
+                key={game.id}
+                onPress={() => void handlePickChallengeGame(game.id)}
+                style={({ pressed }) => [
+                  styles.pickerRow,
+                  { backgroundColor: palette.card, borderColor: palette.cardBorder },
+                  pressed && { opacity: 0.9 },
+                ]}
+              >
+                <Text style={styles.pickerEmoji}>{game.emoji}</Text>
+                <ThemedText type="defaultSemiBold" style={styles.pickerGameName}>
+                  {game.name}
+                </ThemedText>
+                <MaterialIcons name="chevron-right" size={22} color={palette.icon} />
+              </Pressable>
+            ))}
+            <Pressable onPress={() => setShowGamePicker(false)} style={styles.pickerCancel}>
+              <ThemedText style={{ color: palette.icon }}>Cancel</ThemedText>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  safe: { flex: 1 },
+  main: { flex: 1, position: 'relative' },
+  contentBelowHeader: {
+    flex: 1,
+    minHeight: 0,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderBottomWidth: 1,
   },
   backButton: { marginRight: 12 },
@@ -343,7 +500,7 @@ const styles = StyleSheet.create({
   onlineStatus: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 2,
     gap: 6,
   },
   onlineDot: {
@@ -358,13 +515,46 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  emptyWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+  },
+  emptyAvatarWrap: { marginBottom: Spacing.sm },
+  emptyRoomName: {
+    textAlign: 'center',
+    marginBottom: Spacing.xs,
+  },
+  emptyTagline: {
+    textAlign: 'center',
+    marginBottom: Spacing.md,
+  },
+  quickActions: {
+    width: '100%',
+    maxWidth: 320,
+    gap: Spacing.sm,
+  },
+  quickBtn: {
+    height: BUTTON_HEIGHT,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+  },
+  quickBtnOutline: {
+    borderWidth: 1,
+  },
+  quickBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
   messagesScroll: {
     flex: 1,
   },
   messagesContent: {
     paddingHorizontal: 16,
     paddingVertical: 16,
-    paddingBottom: 8,
   },
   bubbleWrap: {
     marginBottom: 12,
@@ -377,66 +567,89 @@ const styles = StyleSheet.create({
   },
   bubble: {
     maxWidth: '80%',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 18,
   },
   bubbleSent: {
-    backgroundColor: Colors.dark.tint,
     borderBottomRightRadius: 6,
   },
   bubbleReceived: {
-    backgroundColor: Colors.dark.card,
     borderWidth: 1,
-    borderColor: Colors.dark.cardBorder,
     borderBottomLeftRadius: 6,
   },
   bubbleText: {
     fontSize: 16,
     lineHeight: 22,
   },
-  bubbleTextSent: {
-    color: Colors.dark.background,
-  },
+  bubbleTextSent: {},
   timestamp: {
     fontSize: 11,
     marginTop: 4,
     opacity: 0.7,
   },
-  timestampSent: { textAlign: 'right', color: Colors.dark.text },
-  timestampReceived: { textAlign: 'left', color: Colors.dark.icon },
+  timestampSent: { textAlign: 'right' },
+  timestampReceived: { textAlign: 'left' },
   inputRow: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     gap: 8,
     borderTopWidth: 1,
-  },
-  inputIconBtn: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
+    zIndex: 2,
   },
   input: {
     flex: 1,
     borderWidth: 1,
-    borderRadius: 22,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    paddingTop: 10,
-    fontSize: 16,
-    maxHeight: 100,
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    fontSize: 15,
+    maxHeight: 80,
   },
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendButtonDisabled: {
-    opacity: 0.6,
+  composeGameBtn: {
+    width: 40,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  pickerSheet: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 28,
+    gap: 12,
+  },
+  pickerTitle: { fontSize: 22 },
+  pickerHint: { marginBottom: 4 },
+  pickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 12,
+  },
+  pickerEmoji: { fontSize: 22 },
+  pickerGameName: { flex: 1, fontSize: 16 },
+  pickerCancel: { alignItems: 'center', paddingVertical: 12 },
 });

@@ -6,14 +6,14 @@ import { CustomTabBar } from '@/components/custom-tab-bar';
 export default function TabLayout() {
   return (
     <Tabs
+      initialRouteName="chat"
       tabBar={(props) => <CustomTabBar {...props} />}
       screenOptions={{ headerShown: false }}
     >
-      <Tabs.Screen name="index" options={{ href: null }} />
-      <Tabs.Screen name="chat" />
-      <Tabs.Screen name="rooms" />
-      <Tabs.Screen name="explore" />
-      <Tabs.Screen name="profile" />
+      <Tabs.Screen name="chat" options={{ title: 'Chat' }} />
+      <Tabs.Screen name="play" options={{ title: 'Play' }} />
+      <Tabs.Screen name="rooms" options={{ title: 'Rooms' }} />
+      <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
     </Tabs>
   );
 }

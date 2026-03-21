@@ -5,7 +5,8 @@ import type { StyleProp, ViewStyle } from 'react-native';
 
 import { useTheme } from '@/contexts/theme-context';
 import { Colors } from '@/constants/theme';
-import { Spacing } from '@/constants/spacing';
+import { CARD_PADDING, CARD_RADIUS, Spacing } from '@/constants/spacing';
+import { ICON_SIZE_CARD } from '@/constants/typography';
 
 type BaseCardProps = {
   children: ReactNode;
@@ -24,7 +25,7 @@ export function BaseCard({ children, onPress, showChevron = false, style }: Base
       {showChevron && onPress && (
         <MaterialIcons
           name="chevron-right"
-          size={24}
+          size={ICON_SIZE_CARD}
           color={palette.icon}
           style={styles.chevron}
         />
@@ -49,8 +50,8 @@ export function BaseCard({ children, onPress, showChevron = false, style }: Base
 
 const styles = StyleSheet.create({
   card: {
-    padding: Spacing.sm,
-    borderRadius: 12,
+    padding: CARD_PADDING,
+    borderRadius: CARD_RADIUS,
     borderWidth: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },

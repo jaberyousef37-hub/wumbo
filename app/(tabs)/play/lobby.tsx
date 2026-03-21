@@ -1,4 +1,5 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import type { Href } from 'expo-router';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
@@ -12,28 +13,34 @@ import { useTheme } from '@/contexts/theme-context';
 import { Colors } from '@/constants/theme';
 import { Spacing } from '@/constants/spacing';
 import { supabase } from '@/lib/supabase';
+import { GAME_NAMES } from '@/lib/room-utils';
 
 type Room = {
   id: string;
   code: string;
   players: string[];
-  board: (string | null)[];
-  turn: string;
-  winner: string | null;
+  game_type?: string;
+  status?: string;
 };
 
 export default function LobbyScreen() {
   const router = useRouter();
-  const { roomId, roomCode, mySymbol } = useLocalSearchParams<{
+  const { roomId, roomCode, gameType, myName, isHost, challengeFriend } = useLocalSearchParams<{
     roomId?: string;
     roomCode?: string;
-    mySymbol?: string;
+    gameType?: string;
+    myName?: string;
+    isHost?: string;
+    challengeFriend?: string;
   }>();
   const { isDark } = useTheme();
   const palette = isDark ? Colors.dark : Colors.light;
 
   const [room, setRoom] = useState<Room | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const gameName = GAME_NAMES[gameType ?? 'tictactoe'] ?? gameType ?? 'Game';
+  const amHost = isHost === '1';
 
   useEffect(() => {
     if (!roomId) {
@@ -45,10 +52,9 @@ export default function LobbyScreen() {
       setRoom({
         id: 'local',
         code: (roomCode as string) ?? '',
-        players: [(mySymbol as string) ?? 'X'],
-        board: [null, null, null, null, null, null, null, null, null],
-        turn: 'X',
-        winner: null,
+        players: [(myName as string) ?? 'Guest'],
+        game_type: (gameType as string) ?? 'tictactoe',
+        status: 'waiting',
       });
       setLoading(false);
       return;
@@ -57,7 +63,7 @@ export default function LobbyScreen() {
     const loadRoom = async () => {
       const { data, error } = await supabase
         .from('rooms')
-        .select('id, code, players, board, turn, winner')
+        .select('id, code, players, game_type, status')
         .eq('id', roomId)
         .single();
 
@@ -66,9 +72,8 @@ export default function LobbyScreen() {
           id: data.id,
           code: data.code ?? '',
           players: (data.players as string[]) ?? [],
-          board: (data.board as (string | null)[]) ?? [],
-          turn: data.turn ?? 'X',
-          winner: data.winner,
+          game_type: (data.game_type as string) ?? 'tictactoe',
+          status: (data.status as string) ?? 'waiting',
         });
       }
       setLoading(false);
@@ -88,9 +93,8 @@ export default function LobbyScreen() {
               id: r.id,
               code: r.code ?? '',
               players: (r.players as string[]) ?? [],
-              board: (r.board as (string | null)[]) ?? [],
-              turn: r.turn ?? 'X',
-              winner: r.winner,
+              game_type: r.game_type ?? 'tictactoe',
+              status: r.status ?? 'waiting',
             });
           }
         }
@@ -100,18 +104,34 @@ export default function LobbyScreen() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [roomId, roomCode, mySymbol]);
+  }, [roomId, roomCode, gameType, myName]);
 
   const players = room?.players ?? [];
   const isLocal = roomId === 'local';
-  const canStart = isLocal ? true : players.length >= 2;
+  const canStart = isLocal ? players.length >= 1 : players.length >= 2;
+  const waitingForPlayers = players.length < 2;
 
   const handleStartGame = () => {
-    if (!roomId || !mySymbol) return;
-    router.replace({
-      pathname: '/(tabs)/explore/tictactoe',
-      params: { roomId, mySymbol },
-    });
+    if (!roomId || !gameType) return;
+
+    if (!isLocal) {
+      supabase.from('rooms').update({ status: 'playing' }).eq('id', roomId).then(() => {});
+    }
+
+    if (gameType === 'tictactoe') {
+      router.replace({
+        pathname: '/(tabs)/play/tictactoe',
+        params: { roomId, mySymbol: amHost ? 'X' : 'O' },
+      } as unknown as Href);
+    } else if (gameType === 'chess') {
+      router.replace('/(tabs)/play/chess' as Href);
+    } else if (gameType === 'uno') {
+      router.replace('/(tabs)/play/uno' as Href);
+    } else if (gameType === 'trivia') {
+      router.replace('/(tabs)/play/trivia' as Href);
+    } else {
+      router.replace('/(tabs)/play/tictactoe' as Href);
+    }
   };
 
   const handleBack = () => router.back();
@@ -132,16 +152,11 @@ export default function LobbyScreen() {
         <View style={[styles.container, styles.centered]}>
           <ThemedText>Room not found.</ThemedText>
           <Pressable onPress={handleBack} style={styles.backButton}>
-            <ThemedText style={styles.linkText}>Go back</ThemedText>
+            <ThemedText style={[styles.linkText, { color: palette.tint }]}>Go back</ThemedText>
           </Pressable>
         </View>
       </SafeAreaView>
     );
-  }
-
-  const displayPlayers = players.map((p) => (p === mySymbol ? 'You' : p));
-  while (displayPlayers.length < 2) {
-    displayPlayers.push('Waiting for player...');
   }
 
   return (
@@ -156,58 +171,88 @@ export default function LobbyScreen() {
           </ThemedText>
         </View>
 
-        <BaseCard>
-          <View style={styles.roomCodeWrap}>
-            <ThemedText
-              style={styles.roomCodeLabel}
-              lightColor={Colors.light.icon}
-              darkColor={Colors.dark.icon}
-            >
-              Room Code
-            </ThemedText>
-            <ThemedText style={styles.roomCode}>{room.code}</ThemedText>
-            <ThemedText
-              style={styles.roomCodeHint}
-              lightColor={Colors.light.icon}
-              darkColor={Colors.dark.icon}
-            >
-              Share this code with your friend to join
-            </ThemedText>
-          </View>
-        </BaseCard>
+        {/* Room code big at top */}
+        <View style={[styles.codeCard, { backgroundColor: palette.card, borderColor: palette.cardBorder }]}>
+          <ThemedText
+            style={styles.codeLabel}
+            lightColor={Colors.light.icon}
+            darkColor={Colors.dark.icon}
+          >
+            Room Code
+          </ThemedText>
+          <ThemedText style={[styles.roomCode, { color: palette.tint }]}>{room.code}</ThemedText>
+          <ThemedText
+            style={styles.codeHint}
+            lightColor={Colors.light.icon}
+            darkColor={Colors.dark.icon}
+          >
+            Share this code with friends to join
+          </ThemedText>
+        </View>
+
+        <ThemedText
+          style={[styles.gameName, { color: palette.text }]}
+        >
+          {gameName}
+        </ThemedText>
 
         <View style={styles.section}>
           <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
             Players
           </ThemedText>
-          {displayPlayers.map((player, index) => (
+          {players.map((name, index) => (
             <BaseCard key={index}>
               <View style={styles.playerRow}>
-                <Avatar size="small" initials={player === 'You' ? 'Y' : '?'} />
-                <ThemedText style={styles.playerName}>{player}</ThemedText>
+                <Avatar
+                  size="small"
+                  initials={name === myName ? 'You' : name.slice(0, 2).toUpperCase()}
+                />
+                <ThemedText style={styles.playerName}>
+                  {name === myName ? 'You' : name}
+                  {amHost && index === 0 && (
+                    <ThemedText
+                      style={[styles.hostBadge, { color: palette.tint }]}
+                    >
+                      {' '}(Host)
+                    </ThemedText>
+                  )}
+                </ThemedText>
               </View>
             </BaseCard>
           ))}
         </View>
 
+        {challengeFriend && (
+          <Pressable
+            onPress={() => router.push('/(tabs)/chat')}
+            style={[styles.sendToChatBtn, { backgroundColor: palette.tint }]}
+          >
+            <MaterialIcons name="message" size={20} color="#fff" />
+            <ThemedText style={styles.sendToChatText}>
+              Send code to {challengeFriend} via Chat
+            </ThemedText>
+          </Pressable>
+        )}
+
         <View style={styles.statusWrap}>
-          <View style={styles.statusDot} />
+          <View style={[styles.statusDot, { backgroundColor: palette.accentYellow }]} />
           <ThemedText
             style={styles.statusText}
             lightColor={Colors.light.icon}
             darkColor={Colors.dark.icon}
           >
-            Waiting for players...
+            {waitingForPlayers ? 'Waiting for players...' : 'Ready to start!'}
           </ThemedText>
         </View>
 
-        {/* Prominent Start Game CTA */}
-        <PrimaryButton
-          label="Start Game"
-          onPress={handleStartGame}
-          disabled={!canStart}
-          style={styles.startButton}
-        />
+        {amHost && (
+          <PrimaryButton
+            label="Start Game"
+            onPress={handleStartGame}
+            disabled={!canStart}
+            style={styles.startButton}
+          />
+        )}
       </View>
     </SafeAreaView>
   );
@@ -221,7 +266,7 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.sm,
   },
   centered: { justifyContent: 'center', alignItems: 'center', gap: Spacing.sm },
-  linkText: { color: Colors.dark.tint, fontSize: 16 },
+  linkText: { fontSize: 16 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -230,15 +275,27 @@ const styles = StyleSheet.create({
   backButton: {},
   backBtn: { marginRight: Spacing.sm },
   title: { fontSize: 20 },
-  roomCodeWrap: { alignItems: 'center' },
-  roomCodeLabel: { fontSize: 14, marginBottom: Spacing.xs },
+  codeCard: {
+    alignItems: 'center',
+    padding: Spacing.lg,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: Spacing.md,
+  },
+  codeLabel: { fontSize: 14, marginBottom: Spacing.xs },
   roomCode: {
-    fontSize: 32,
+    fontSize: 40,
     fontWeight: '800',
-    letterSpacing: 4,
+    letterSpacing: 8,
     marginBottom: Spacing.xs,
   },
-  roomCodeHint: { fontSize: 13 },
+  codeHint: { fontSize: 13 },
+  gameName: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: Spacing.md,
+    textAlign: 'center',
+  },
   section: { marginBottom: Spacing.md },
   sectionTitle: { fontSize: 16, marginBottom: Spacing.sm },
   playerRow: {
@@ -246,6 +303,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   playerName: { fontSize: 16, marginLeft: Spacing.sm },
+  hostBadge: { fontSize: 14, fontWeight: '600' },
   statusWrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -257,9 +315,19 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: Colors.dark.accentYellow,
   },
   statusText: { fontSize: 14 },
+  sendToChatBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: 12,
+    marginBottom: Spacing.md,
+  },
+  sendToChatText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   startButton: {
     minHeight: 56,
     paddingVertical: Spacing.sm,

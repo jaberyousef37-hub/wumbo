@@ -3,9 +3,10 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '@/contexts/theme-context';
 import { Colors } from '@/constants/theme';
 
-type AvatarSize = 'small' | 'medium' | 'large' | 'xlarge';
+type AvatarSize = 'mini' | 'small' | 'medium' | 'large' | 'xlarge';
 
 const SIZES: Record<AvatarSize, number> = {
+  mini: 28,
   small: 44,
   medium: 56,
   large: 80,
@@ -21,7 +22,8 @@ type AvatarProps = {
 export function Avatar({ initials, imageUri, size = 'medium' }: AvatarProps) {
   const { isDark } = useTheme();
   const dim = SIZES[size];
-  const fontSize = size === 'small' ? 16 : size === 'medium' ? 20 : size === 'large' ? 28 : 48;
+  const fontSize =
+    size === 'mini' ? 10 : size === 'small' ? 16 : size === 'medium' ? 20 : size === 'large' ? 28 : 48;
   const bgColor = isDark ? Colors.dark.tint : Colors.light.tint;
 
   if (imageUri) {

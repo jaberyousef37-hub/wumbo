@@ -12,40 +12,45 @@ import {
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { useOnboarding } from '@/contexts/onboarding-context';
-import { Colors } from '@/constants/theme';
+import { useTheme } from '@/contexts/theme-context';
+import { AppColors, Colors } from '@/constants/theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-const SLIDES = [
-  {
-    id: '1',
-    title: 'Welcome to Wumbo',
-    gradient: ['#1a0a2e', '#2d1b4e', '#4a2c6d'] as const,
-  },
-  {
-    id: '2',
-    title: 'Play Games with Friends',
-    gradient: ['#2d1b4e', '#4a2c6d', '#6B46C1'] as const,
-    gameIcons: ['⭕', '🃏', '♟️', '❓'],
-  },
-  {
-    id: '3',
-    title: 'Compete & Win',
-    gradient: ['#4a2c6d', '#6B46C1', '#B794F6'] as const,
-    trophy: true,
-  },
-];
+function getSlides(palette: typeof Colors.dark) {
+  return [
+    {
+      id: '1',
+      title: 'Welcome to Wumbo',
+      gradient: [palette.background, palette.card, palette.cardBorder] as const,
+    },
+    {
+      id: '2',
+      title: 'Play Games with Friends',
+      gradient: [palette.card, palette.cardBorder, palette.tint] as const,
+      gameIcons: ['⭕', '🃏', '♟️', '❓'],
+    },
+    {
+      id: '3',
+      title: 'Compete & Win',
+      gradient: [palette.cardBorder, palette.tint, palette.icon] as const,
+      trophy: true,
+    },
+  ];
+}
 
 function SlideItem({
   item,
   index,
   onNext,
   isLast,
+  palette,
 }: {
-  item: (typeof SLIDES)[0];
+  item: ReturnType<typeof getSlides>[0];
   index: number;
   onNext: () => void;
   isLast: boolean;
+  palette: typeof Colors.dark;
 }) {
   return (
     <View style={styles.slide}>
@@ -57,12 +62,12 @@ function SlideItem({
         {index === 0 && (
           <Animated.View entering={FadeInDown.delay(200).duration(500)} style={styles.logoWrap}>
             <LinearGradient
-              colors={[Colors.dark.accentPink, Colors.dark.accentYellow, Colors.dark.accentPink]}
+              colors={[palette.accentPink, palette.accentYellow, palette.accentPink]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.logoGradient}
             >
-              <Text style={styles.logo}>Wumbo</Text>
+              <Text style={[styles.logo, { color: palette.text }]}>Wumbo</Text>
             </LinearGradient>
           </Animated.View>
         )}
@@ -83,12 +88,12 @@ function SlideItem({
             <Text style={styles.trophy}>🏆</Text>
           </Animated.View>
         )}
-        <Text style={styles.slideTitle}>{item.title}</Text>
+        <Text style={[styles.slideTitle, { color: palette.text }]}>{item.title}</Text>
       </View>
 
       <Pressable onPress={onNext} style={styles.nextBtn}>
         <LinearGradient
-          colors={[Colors.dark.accentPink, Colors.dark.accentYellow]}
+          colors={[palette.accentPink, palette.accentYellow]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={styles.nextBtnGradient}
@@ -105,6 +110,9 @@ function SlideItem({
 export default function OnboardingSlides() {
   const router = useRouter();
   const { completeOnboarding } = useOnboarding();
+  const { isDark } = useTheme();
+  const palette = isDark ? Colors.dark : Colors.light;
+  const SLIDES = React.useMemo(() => getSlides(palette), [palette]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = React.useRef<FlatList>(null);
 
@@ -130,7 +138,7 @@ export default function OnboardingSlides() {
   );
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: palette.background }]}>
       <FlatList
         ref={flatListRef}
         data={SLIDES}
@@ -146,6 +154,7 @@ export default function OnboardingSlides() {
             index={index}
             onNext={handleNext}
             isLast={index === SLIDES.length - 1}
+            palette={palette}
           />
         )}
       />
@@ -159,7 +168,7 @@ export default function OnboardingSlides() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a0a2e' },
+  container: { flex: 1 },
   slide: {
     width: SCREEN_WIDTH,
     flex: 1,
@@ -180,7 +189,6 @@ const styles = StyleSheet.create({
   logo: {
     fontSize: 48,
     fontWeight: '800',
-    color: '#fff',
     letterSpacing: 3,
   },
   gameIconsRow: {
@@ -202,7 +210,6 @@ const styles = StyleSheet.create({
   slideTitle: {
     fontSize: 28,
     fontWeight: '800',
-    color: '#fff',
     textAlign: 'center',
   },
   nextBtn: {
@@ -218,7 +225,7 @@ const styles = StyleSheet.create({
   nextBtnText: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#1a0a2e',
+    color: AppColors.background,
   },
   dots: {
     flexDirection: 'row',
@@ -234,6 +241,6 @@ const styles = StyleSheet.create({
   },
   dotActive: {
     width: 24,
-    backgroundColor: '#fff',
+    backgroundColor: AppColors.text,
   },
 });

@@ -1,10 +1,10 @@
-import React, { createContext, useCallback, useContext, useState } from 'react';
+import React, { createContext, useContext, useMemo } from 'react';
 
-type ThemeMode = 'dark' | 'light';
+type ThemeMode = 'dark';
 
 type ThemeContextType = {
   theme: ThemeMode;
-  isDark: boolean;
+  isDark: true;
   setTheme: (mode: ThemeMode) => void;
   toggleTheme: () => void;
 };
@@ -12,28 +12,17 @@ type ThemeContextType = {
 const ThemeContext = createContext<ThemeContextType | null>(null);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<ThemeMode>('dark');
-
-  const setTheme = useCallback((mode: ThemeMode) => {
-    setThemeState(mode);
-  }, []);
-
-  const toggleTheme = useCallback(() => {
-    setThemeState((prev) => (prev === 'dark' ? 'light' : 'dark'));
-  }, []);
-
-  return (
-    <ThemeContext.Provider
-      value={{
-        theme,
-        isDark: theme === 'dark',
-        setTheme,
-        toggleTheme,
-      }}
-    >
-      {children}
-    </ThemeContext.Provider>
+  const value = useMemo<ThemeContextType>(
+    () => ({
+      theme: 'dark',
+      isDark: true,
+      setTheme: () => {},
+      toggleTheme: () => {},
+    }),
+    []
   );
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
 export function useTheme() {

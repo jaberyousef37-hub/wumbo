@@ -1,25 +1,24 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import * as Haptics from 'expo-haptics';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { useTheme } from '@/contexts/theme-context';
 import { Colors } from '@/constants/theme';
 import { Spacing } from '@/constants/spacing';
+import { ICON_SIZE_NAV } from '@/constants/typography';
 
-const TAB_CONFIG: Record<string, { icon: string; iconSet: 'material' | 'sf'; label: string }> = {
-  chat: { icon: 'bubble.left.and.bubble.right.fill', iconSet: 'sf', label: 'Chat' },
-  rooms: { icon: 'people', iconSet: 'material', label: 'Rooms' },
-  explore: { icon: 'gamecontroller.fill', iconSet: 'sf', label: 'Games' },
-  profile: { icon: 'person.fill', iconSet: 'sf', label: 'Profile' },
+const TAB_CONFIG: Record<string, { icon: keyof typeof MaterialIcons.glyphMap; label: string }> = {
+  chat: { icon: 'chat', label: 'Chat' },
+  play: { icon: 'sports-esports', label: 'Play' },
+  rooms: { icon: 'groups', label: 'Rooms' },
+  profile: { icon: 'person', label: 'Profile' },
 };
+
+const palette = Colors.dark;
 
 export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const { isDark } = useTheme();
-  const palette = isDark ? Colors.dark : Colors.light;
 
   return (
     <View
@@ -35,7 +34,10 @@ export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarPro
       {state.routes.map((route, index) => {
         const { options } = descriptors[route.key];
         const isFocused = state.index === index;
-        const config = TAB_CONFIG[route.name] ?? { icon: 'circle', iconSet: 'material' as const, label: route.name };
+        const config = TAB_CONFIG[route.name] ?? {
+          icon: 'circle' as const,
+          label: route.name,
+        };
 
         const onPress = () => {
           if (process.env.EXPO_OS === 'ios') {
@@ -51,9 +53,6 @@ export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarPro
           }
         };
 
-        const iconSize = isFocused ? 28 : 22;
-        const iconColor = isFocused ? palette.tabIconSelected : palette.tabIconDefault;
-
         return (
           <Pressable
             key={route.key}
@@ -63,25 +62,28 @@ export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarPro
             accessibilityState={isFocused ? { selected: true } : {}}
             accessibilityLabel={options.tabBarAccessibilityLabel ?? config.label}
           >
-            <View style={[styles.tabContent, isFocused && styles.tabContentActive]}>
+            <View
+              style={[
+                styles.tabContent,
+                isFocused && styles.tabContentActive,
+                !isFocused && { opacity: 0.6 },
+              ]}
+            >
               {isFocused && (
-                <View
-                  style={[
-                    styles.pill,
-                    { backgroundColor: `${palette.tabIconSelected}30` },
-                  ]}
-                />
+                <View style={[styles.pill, { backgroundColor: palette.tint }]} />
               )}
-              {config.iconSet === 'sf' ? (
-                <IconSymbol name={config.icon as any} size={iconSize} color={iconColor} />
-              ) : (
-                <MaterialIcons name={config.icon as any} size={iconSize} color={iconColor} />
-              )}
+              <MaterialIcons
+                name={config.icon}
+                size={ICON_SIZE_NAV}
+                color={isFocused ? palette.text : palette.tabIconDefault}
+              />
             </View>
             <Text
               style={[
                 styles.label,
-                { color: iconColor },
+                {
+                  color: isFocused ? palette.tabIconSelected : palette.tabIconDefault,
+                },
                 isFocused && styles.labelActive,
               ]}
               numberOfLines={1}
@@ -105,25 +107,25 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 44,
+    minHeight: 60,
   },
   tabContent: {
     position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
-    width: 48,
-    height: 36,
+    width: 52,
+    height: 40,
   },
   tabContentActive: {
-    borderRadius: 18,
+    borderRadius: 22,
   },
   pill: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: 18,
+    borderRadius: 22,
   },
   label: {
-    fontSize: 11,
-    marginTop: 2,
+    fontSize: 12,
+    marginTop: 4,
   },
   labelActive: {
     fontWeight: '700',

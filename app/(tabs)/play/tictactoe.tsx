@@ -3,7 +3,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -180,11 +180,19 @@ export default function TicTacToeScreen() {
     router.back();
   }, [router]);
 
+  const { isDark } = useTheme();
+  const palette = isDark ? Colors.dark : Colors.light;
+  const { width: winW, height: winH } = useWindowDimensions();
+  const gridGap = 12;
+  const horizontalPad = 24 * 2;
+  const maxGrid = Math.min(winW - horizontalPad - 16, winH * 0.42);
+  const cellSize = Math.max(96, Math.min(132, Math.floor((maxGrid - gridGap * 2) / 3)));
+
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
+      <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top']}>
         <View style={[styles.container, styles.centered]}>
-          <ActivityIndicator size="large" color={Colors.dark.tint} />
+          <ActivityIndicator size="large" color={palette.tint} />
         </View>
       </SafeAreaView>
     );
@@ -192,11 +200,11 @@ export default function TicTacToeScreen() {
 
   if (!roomId || !mySymbol) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
+      <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top']}>
         <View style={[styles.container, styles.centered]}>
           <ThemedText>Invalid game session.</ThemedText>
           <Pressable onPress={handleBack}>
-            <ThemedText style={styles.linkText}>Go back</ThemedText>
+            <ThemedText style={[styles.linkText, { color: palette.tint }]}>Go back</ThemedText>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -206,15 +214,12 @@ export default function TicTacToeScreen() {
   const displayWinner = winner ?? result?.winner;
   const displayLine = result?.line;
 
-  const { isDark } = useTheme();
-  const palette = isDark ? Colors.dark : Colors.light;
-
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top']}>
       <View style={styles.container}>
         {/* Gradient header with player scores */}
         <LinearGradient
-          colors={[Colors.dark.tint, Colors.dark.accentPink, Colors.dark.accentYellow]}
+          colors={[palette.tint, palette.accentPink, palette.accentYellow]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={styles.header}
@@ -248,8 +253,20 @@ export default function TicTacToeScreen() {
               {!isMyTurn && ' (waiting for opponent)'}
             </ThemedText>
             <View style={styles.turnIndicators}>
-              <View style={[styles.turnDot, turn === 'X' && styles.turnDotActiveX]} />
-              <View style={[styles.turnDot, turn === 'O' && styles.turnDotActiveO]} />
+              <View
+                style={[
+                  styles.turnDot,
+                  turn === 'X' && styles.turnDotActiveX,
+                  { backgroundColor: turn === 'X' ? palette.tint : palette.cardBorder },
+                ]}
+              />
+              <View
+                style={[
+                  styles.turnDot,
+                  turn === 'O' && styles.turnDotActiveO,
+                  { backgroundColor: turn === 'O' ? palette.accentPink : palette.cardBorder },
+                ]}
+              />
             </View>
           </View>
         )}
@@ -257,49 +274,60 @@ export default function TicTacToeScreen() {
         {/* Result message */}
         {displayWinner && (
           <View style={styles.resultWrap}>
-            <ThemedText style={[styles.resultText, styles.resultWinner]}>
+            <ThemedText style={[styles.resultText, styles.resultWinner, { color: palette.tint }]}>
               {displayWinner} wins!
             </ThemedText>
           </View>
         )}
         {draw && (
           <View style={styles.resultWrap}>
-            <ThemedText style={styles.resultText}>It's a draw!</ThemedText>
+            <ThemedText style={styles.resultText}>It&apos;s a draw!</ThemedText>
           </View>
         )}
 
         {/* Grid - centered and bigger */}
         <View style={styles.gridWrap}>
-        <View style={styles.grid}>
-          {board.map((cell, index) => {
-            const isWinningCell = displayLine?.includes(index);
-            return (
-              <Pressable
-                key={index}
-                onPress={() => handleCellPress(index)}
-                disabled={gameOver || !isMyTurn}
-                style={[
-                  styles.cell,
-                  isWinningCell && styles.cellWinning,
-                ]}
-              >
-                {cell === 'X' && (
-                  <Text style={[styles.cellText, styles.cellX]}>X</Text>
-                )}
-                {cell === 'O' && (
-                  <Text style={[styles.cellText, styles.cellO]}>O</Text>
-                )}
-              </Pressable>
-            );
-          })}
-        </View>
+          <View style={[styles.grid, { gap: gridGap, width: cellSize * 3 + gridGap * 2 }]}>
+            {board.map((cell, index) => {
+              const isWinningCell = displayLine?.includes(index);
+              return (
+                <Pressable
+                  key={index}
+                  onPress={() => handleCellPress(index)}
+                  disabled={gameOver || !isMyTurn}
+                  style={[
+                    styles.cell,
+                    {
+                      width: cellSize,
+                      height: cellSize,
+                      backgroundColor: palette.card,
+                      borderColor: isWinningCell ? palette.accentYellow : palette.cardBorder,
+                      ...(isWinningCell && { shadowColor: palette.accentYellow }),
+                    },
+                    isWinningCell && styles.cellWinning,
+                  ]}
+                >
+                  {cell === 'X' && (
+                    <Text style={[styles.cellText, styles.cellX, { color: palette.tint, fontSize: cellSize * 0.42 }]}>
+                      X
+                    </Text>
+                  )}
+                  {cell === 'O' && (
+                    <Text style={[styles.cellText, styles.cellO, { color: palette.accentPink, fontSize: cellSize * 0.42 }]}>
+                      O
+                    </Text>
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
 
         {/* Restart button - only show when game over and room exists */}
         {gameOver && roomId && (
-        <Pressable onPress={handleRestart} style={styles.restartButton}>
-          <MaterialIcons name="refresh" size={22} color={Colors.dark.background} />
-          <Text style={styles.restartText}>Restart</Text>
+        <Pressable onPress={handleRestart} style={[styles.restartButton, { backgroundColor: palette.tint }]}>
+          <MaterialIcons name="refresh" size={22} color={palette.background} />
+          <Text style={[styles.restartText, { color: palette.background }]}>Restart</Text>
         </Pressable>
         )}
       </View>
@@ -317,10 +345,7 @@ export default function TicTacToeScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: Colors.dark.background,
-  },
+  safe: { flex: 1 },
   container: {
     flex: 1,
     paddingHorizontal: 24,
@@ -372,17 +397,10 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: Colors.dark.cardBorder,
     opacity: 0.5,
   },
-  turnDotActiveX: {
-    backgroundColor: Colors.dark.tint,
-    opacity: 1,
-  },
-  turnDotActiveO: {
-    backgroundColor: Colors.dark.accentPink,
-    opacity: 1,
-  },
+  turnDotActiveX: { opacity: 1 },
+  turnDotActiveO: { opacity: 1 },
   resultWrap: {
     alignItems: 'center',
     marginBottom: 20,
@@ -391,67 +409,48 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
   },
-  resultWinner: {
-    color: Colors.dark.tint,
-  },
+  resultWinner: {},
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
     justifyContent: 'center',
+    alignContent: 'center',
   },
   cell: {
-    width: 100,
-    height: 100,
-    backgroundColor: Colors.dark.card,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 2,
-    borderColor: Colors.dark.cardBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cellWinning: {
-    borderColor: Colors.dark.accentYellow,
     backgroundColor: 'rgba(246, 224, 94, 0.15)',
-    shadowColor: Colors.dark.accentYellow,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.6,
     shadowRadius: 8,
     elevation: 6,
   },
   cellText: {
-    fontSize: 48,
     fontWeight: '800',
   },
-  cellX: {
-    color: Colors.dark.tint,
-  },
-  cellO: {
-    color: Colors.dark.accentPink,
-  },
+  cellX: {},
+  cellO: {},
   restartButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: Colors.dark.tint,
     paddingVertical: 14,
     paddingHorizontal: 24,
     borderRadius: 14,
     alignSelf: 'center',
   },
-  restartText: {
-    color: Colors.dark.background,
-    fontSize: 16,
-    fontWeight: '700',
-  },
+  restartText: { fontSize: 16, fontWeight: '700' },
   centered: {
     justifyContent: 'center',
     alignItems: 'center',
     gap: 16,
   },
   linkText: {
-    color: Colors.dark.tint,
     fontSize: 16,
   },
 });

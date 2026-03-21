@@ -1,22 +1,24 @@
 import { useAuth } from '@/contexts/auth-context';
+import { useTheme } from '@/contexts/theme-context';
 import { Colors } from '@/constants/theme';
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 
 export default function LoginScreen() {
   const { signIn, signUp, signInAsGuest } = useAuth();
+  const { isDark } = useTheme();
+  const palette = isDark ? Colors.dark : Colors.light;
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -59,17 +61,14 @@ export default function LoginScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <KeyboardAvoidingView
-        style={styles.keyboard}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+    <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top']}>
+      <View style={styles.body}>
         <ScrollView
+          style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Wumbo logo/name */}
           <View style={styles.logoSection}>
             <ThemedText style={styles.logo}>Wumbo</ThemedText>
             <ThemedText
@@ -81,12 +80,11 @@ export default function LoginScreen() {
             </ThemedText>
           </View>
 
-          {/* Form */}
           <View style={styles.form}>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: palette.card, borderColor: palette.cardBorder, color: palette.text }]}
               placeholder="Email"
-              placeholderTextColor={Colors.dark.tabIconDefault}
+              placeholderTextColor={palette.tabIconDefault}
               value={email}
               onChangeText={(t) => {
                 setEmail(t);
@@ -97,9 +95,9 @@ export default function LoginScreen() {
               autoCorrect={false}
             />
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: palette.card, borderColor: palette.cardBorder, color: palette.text }]}
               placeholder="Password"
-              placeholderTextColor={Colors.dark.tabIconDefault}
+              placeholderTextColor={palette.tabIconDefault}
               value={password}
               onChangeText={(t) => {
                 setPassword(t);
@@ -113,62 +111,78 @@ export default function LoginScreen() {
                 {error}
               </ThemedText>
             )}
-
-            <Pressable
-              style={({ pressed }) => [styles.button, styles.loginButton, pressed && styles.buttonPressed]}
-              onPress={handleLogin}
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <ActivityIndicator color={Colors.dark.background} size="small" />
-              ) : (
-                <ThemedText style={styles.loginButtonText}>Login</ThemedText>
-              )}
-            </Pressable>
-
-            <Pressable
-              style={({ pressed }) => [styles.button, styles.signUpButton, pressed && styles.buttonPressed]}
-              onPress={handleSignUp}
-              disabled={isLoading}
-            >
-              <ThemedText style={styles.signUpButtonText}>Sign Up</ThemedText>
-            </Pressable>
-
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <ThemedText style={styles.dividerText} lightColor={Colors.light.icon} darkColor={Colors.dark.icon}>
-                or
-              </ThemedText>
-              <View style={styles.dividerLine} />
-            </View>
-
-            <Pressable
-              style={({ pressed }) => [styles.button, styles.guestButton, pressed && styles.buttonPressed]}
-              onPress={handleGuest}
-              disabled={isLoading}
-            >
-              <ThemedText style={styles.guestButtonText}>Continue as Guest</ThemedText>
-            </Pressable>
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+
+        <View
+          style={[
+            styles.actionsFooter,
+            { paddingBottom: Math.max(insets.bottom, 16), borderTopColor: palette.cardBorder },
+          ]}
+        >
+          <Pressable
+            style={({ pressed }) => [styles.button, { backgroundColor: palette.tint }, pressed && styles.buttonPressed]}
+            onPress={handleLogin}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <ActivityIndicator color={palette.background} size="small" />
+            ) : (
+              <ThemedText style={[styles.loginButtonText, { color: palette.background }]}>Login</ThemedText>
+            )}
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [styles.button, { backgroundColor: palette.accentPink }, pressed && styles.buttonPressed]}
+            onPress={handleSignUp}
+            disabled={isLoading}
+          >
+            <ThemedText style={[styles.signUpButtonText, { color: palette.background }]}>Sign Up</ThemedText>
+          </Pressable>
+
+          <View style={styles.divider}>
+            <View style={[styles.dividerLine, { backgroundColor: palette.cardBorder }]} />
+            <ThemedText style={styles.dividerText} lightColor={Colors.light.icon} darkColor={Colors.dark.icon}>
+              or
+            </ThemedText>
+            <View style={[styles.dividerLine, { backgroundColor: palette.cardBorder }]} />
+          </View>
+
+          <Pressable
+            style={({ pressed }) => [styles.button, styles.guestButton, { borderColor: palette.accentYellow }, pressed && styles.buttonPressed]}
+            onPress={handleGuest}
+            disabled={isLoading}
+          >
+            <ThemedText style={[styles.guestButtonText, { color: palette.accentYellow }]}>Continue as Guest</ThemedText>
+          </Pressable>
+        </View>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
+  safe: { flex: 1 },
+  body: {
     flex: 1,
-    backgroundColor: Colors.dark.background,
+    justifyContent: 'space-between',
   },
-  keyboard: {
+  scroll: {
     flex: 1,
+    flexShrink: 1,
+    minHeight: 0,
   },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 28,
     paddingTop: 48,
-    paddingBottom: 32,
+    paddingBottom: 16,
+  },
+  actionsFooter: {
+    paddingHorizontal: 28,
+    paddingTop: 12,
+    gap: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   logoSection: {
     alignItems: 'center',
@@ -188,14 +202,11 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   input: {
-    backgroundColor: Colors.dark.card,
     borderWidth: 1,
-    borderColor: Colors.dark.cardBorder,
     borderRadius: 16,
     paddingHorizontal: 18,
     paddingVertical: 16,
     fontSize: 16,
-    color: Colors.dark.text,
   },
   error: {
     fontSize: 14,
@@ -211,23 +222,10 @@ const styles = StyleSheet.create({
   buttonPressed: {
     opacity: 0.9,
   },
-  loginButton: {
-    backgroundColor: Colors.dark.tint,
-    marginTop: 8,
-  },
-  loginButtonText: {
-    color: Colors.dark.background,
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  signUpButton: {
-    backgroundColor: Colors.dark.accentPink,
-  },
-  signUpButtonText: {
-    color: Colors.dark.background,
-    fontSize: 17,
-    fontWeight: '600',
-  },
+  loginButton: { marginTop: 8 },
+  loginButtonText: { fontSize: 17, fontWeight: '700' },
+  signUpButton: {},
+  signUpButtonText: { fontSize: 17, fontWeight: '600' },
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -237,7 +235,6 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: Colors.dark.cardBorder,
   },
   dividerText: {
     fontSize: 14,
@@ -245,11 +242,6 @@ const styles = StyleSheet.create({
   guestButton: {
     backgroundColor: 'transparent',
     borderWidth: 2,
-    borderColor: Colors.dark.accentYellow,
   },
-  guestButtonText: {
-    color: Colors.dark.accentYellow,
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  guestButtonText: { fontSize: 16, fontWeight: '600' },
 });

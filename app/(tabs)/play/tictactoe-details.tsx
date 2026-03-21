@@ -61,7 +61,7 @@ export default function TicTacToeDetailsScreen() {
         // Supabase unavailable: fall back to local play
         const code = String(generateRoomCode());
         router.push({
-          pathname: '/(tabs)/explore/lobby',
+          pathname: '/(tabs)/play/lobby',
           params: { roomId: 'local', roomCode: code, mySymbol: 'X' },
         });
         return;
@@ -92,7 +92,7 @@ export default function TicTacToeDetailsScreen() {
       }
 
       router.push({
-        pathname: '/(tabs)/explore/lobby',
+        pathname: '/(tabs)/play/lobby',
         params: { roomId: String(data.id), roomCode: code, mySymbol: 'X' },
       });
     } catch (e) {
@@ -100,7 +100,7 @@ export default function TicTacToeDetailsScreen() {
       // Supabase failed: fall back to local play
       const code = String(generateRoomCode());
       router.push({
-        pathname: '/(tabs)/explore/lobby',
+        pathname: '/(tabs)/play/lobby',
         params: { roomId: 'local', roomCode: code, mySymbol: 'X' },
       });
     } finally {
@@ -109,7 +109,7 @@ export default function TicTacToeDetailsScreen() {
   };
 
   const handleJoinRoom = () => {
-    router.push('/(tabs)/explore/join-room');
+    router.push('/(tabs)/play/join-room');
   };
 
   const handleBack = () => {

@@ -1,16 +1,13 @@
 import { Colors } from '@/constants/theme';
-import { useTheme } from '@/contexts/theme-context';
 
+type ColorName = keyof typeof Colors.dark;
+
+/**
+ * Resolves a themed color. App is dark-only; `light` prop is treated as fallback for legacy call sites.
+ */
 export function useThemeColor(
   props: { light?: string; dark?: string },
-  colorName: keyof typeof Colors.light & keyof typeof Colors.dark
+  colorName: ColorName
 ) {
-  const { theme } = useTheme();
-  const colorFromProps = props[theme];
-
-  if (colorFromProps) {
-    return colorFromProps;
-  } else {
-    return Colors[theme][colorName];
-  }
+  return props.dark ?? props.light ?? Colors.dark[colorName];
 }

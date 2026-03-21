@@ -1,47 +1,59 @@
 /**
- * Wumbo app theme — dark purple palette.
+ * Wumbo — forced dark design system (single palette).
  */
 
 import { Platform } from 'react-native';
 
-const tintColor = '#B794F6';
+/** Canonical tokens */
+export const AppColors = {
+  background: '#0d0d0d',
+  card: '#1a1a1a',
+  cardBorder: '#2a2a2a',
+  text: '#FFFFFF',
+  textSecondary: '#A0A0A0',
+  tint: '#7C3AED',
+  accent: '#FF6FD8',
+  yellow: '#FFE066',
+  tabIconDefault: '#555555',
+  tabIconSelected: '#7C3AED',
+  success: '#2ECC71',
+  /** Legacy alias — same as `tint` */
+  primary: '#7C3AED',
+  /** Legacy alias — same as `card` */
+  surface: '#1a1a1a',
+  /** Legacy alias — same as `textSecondary` */
+  muted: '#A0A0A0',
+  /** Legacy alias — same as `cardBorder` */
+  border: '#2a2a2a',
+} as const;
+
+/** Navigation / useTheme compatibility — light mirrors dark so theme mode never flashes wrong colors */
+const palette = {
+  text: AppColors.text,
+  background: AppColors.background,
+  tint: AppColors.tint,
+  icon: AppColors.tint,
+  tabIconDefault: AppColors.tabIconDefault,
+  tabIconSelected: AppColors.tabIconSelected,
+  card: AppColors.card,
+  cardBorder: AppColors.cardBorder,
+  textSecondary: AppColors.textSecondary,
+  accent: AppColors.accent,
+  yellow: AppColors.yellow,
+  accentPink: AppColors.accent,
+  accentYellow: AppColors.yellow,
+} as const;
 
 export const Colors = {
-  light: {
-    text: '#2d1b4e',
-    background: '#ffffff',
-    tint: '#8B5CF6',
-    icon: '#7C3AED',
-    tabIconDefault: '#9CA3AF',
-    tabIconSelected: '#8B5CF6',
-    card: '#f8f5fc',
-    cardBorder: '#E9E3F0',
-    accentPink: '#EC4899',
-    accentYellow: '#FBBF24',
-  },
-  dark: {
-    text: '#E9E0F5',
-    background: '#1a0a2e',
-    tint: tintColor,
-    icon: '#9F7AEA',
-    tabIconDefault: '#6B46C1',
-    tabIconSelected: tintColor,
-    card: '#2d1b4e',
-    cardBorder: '#4a2c6d',
-    accentPink: '#F687B3',
-    accentYellow: '#F6E05E',
-  },
+  light: palette,
+  dark: palette,
 };
 
 export const Fonts = Platform.select({
   ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
     sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
     serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
     rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
     mono: 'ui-monospace',
   },
   default: {

@@ -1,7 +1,8 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import * as ImagePicker from 'expo-image-picker';
+import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -9,22 +10,9 @@ import { Avatar } from '@/components/avatar';
 import { BaseCard } from '@/components/base-card';
 import { ThemedText } from '@/components/themed-text';
 import { useProfile } from '@/contexts/profile-context';
-import { useTheme } from '@/contexts/theme-context';
-import { Colors } from '@/constants/theme';
-import { Spacing } from '@/constants/spacing';
-
-const LEADERBOARD = [
-  { rank: 1, name: 'Luna Star', wins: 156, gamesPlayed: 180, avatar: 'LS' },
-  { rank: 2, name: 'Max Power', wins: 142, gamesPlayed: 165, avatar: 'MP' },
-  { rank: 3, name: 'Zara Swift', wins: 128, gamesPlayed: 150, avatar: 'ZS' },
-  { rank: 4, name: 'Leo Knight', wins: 115, gamesPlayed: 140, avatar: 'LK' },
-  { rank: 5, name: 'Aria Bloom', wins: 98, gamesPlayed: 120, avatar: 'AB' },
-  { rank: 6, name: 'Finn River', wins: 87, gamesPlayed: 110, avatar: 'FR' },
-  { rank: 7, name: 'Maya Storm', wins: 76, gamesPlayed: 95, avatar: 'MS' },
-  { rank: 8, name: 'Kai Phoenix', wins: 65, gamesPlayed: 85, avatar: 'KP' },
-  { rank: 9, name: 'Nova Sky', wins: 54, gamesPlayed: 72, avatar: 'NS' },
-  { rank: 10, name: 'Echo Wave', wins: 42, gamesPlayed: 58, avatar: 'EW' },
-];
+import { AppColors, Colors } from '@/constants/theme';
+import { CARD_GAP, SECTION_GAP, Spacing } from '@/constants/spacing';
+import { ICON_SIZE_CARD } from '@/constants/typography';
 
 const STATS = { gamesPlayed: 42, wins: 28 };
 const XP = { current: 720, nextLevel: 1000 };
@@ -44,20 +32,30 @@ const BADGES = [
 ];
 
 const SETTINGS = [
-  { id: 'edit', label: 'Edit Profile', icon: 'edit' },
-  { id: 'notifications', label: 'Notifications', icon: 'notifications' },
-  { id: 'privacy', label: 'Privacy', icon: 'lock' },
-  { id: 'logout', label: 'Logout', icon: 'logout' },
+  { id: 'edit', label: 'Edit Profile', icon: 'edit' as const },
+  { id: 'notifications', label: 'Notifications', icon: 'notifications' as const },
+  { id: 'privacy', label: 'Privacy', icon: 'lock' as const },
+  { id: 'logout', label: 'Logout', icon: 'logout' as const },
 ];
 
+const palette = Colors.dark;
+
 export default function ProfileScreen() {
+  const router = useRouter();
   const { name: profileName, username: profileUsername } = useProfile();
-  const { isDark, toggleTheme } = useTheme();
   const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(null);
 
-  const displayName = profileName || 'Alex Chen';
-  const displayUsername = profileUsername || '@alexchen';
-  const palette = isDark ? Colors.dark : Colors.light;
+  const displayName = profileName || 'Yousef';
+  const displayUsername = profileUsername || '@yousef';
+  const displayInitials =
+    displayName === 'Yousef'
+      ? 'YJ'
+      : displayName
+          .split(' ')
+          .map((n) => n[0])
+          .join('')
+          .slice(0, 2)
+          .toUpperCase() || '??';
 
   const winRate =
     STATS.gamesPlayed > 0 ? Math.round((STATS.wins / STATS.gamesPlayed) * 100) : 0;
@@ -85,30 +83,31 @@ export default function ProfileScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* FOCAL: Avatar + Level 2x bigger */}
           <Pressable onPress={pickImage} style={styles.avatarWrap}>
             <View style={styles.avatarOuter}>
-              <Avatar initials={displayName} imageUri={profilePhotoUri} size="xlarge" />
+              <Avatar initials={displayInitials} imageUri={profilePhotoUri} size="xlarge" />
             </View>
             <View style={[styles.editAvatarBtn, { backgroundColor: palette.tint }]}>
-              <MaterialIcons name="edit" size={20} color="#fff" />
+              <MaterialIcons name="edit" size={ICON_SIZE_CARD} color="#fff" />
             </View>
           </Pressable>
 
           <ThemedText type="title" style={styles.name}>
             {displayName}
           </ThemedText>
-          <ThemedText
-            style={styles.username}
-            lightColor={Colors.light.icon}
-            darkColor={Colors.dark.icon}
-          >
+          <ThemedText type="body" style={[styles.username, { color: AppColors.muted }]}>
             {displayUsername}
           </ThemedText>
 
-          {/* Level — prominent, 2x scale */}
-          <View style={[styles.levelCard, { backgroundColor: palette.card, borderColor: palette.cardBorder }]}>
-            <ThemedText style={styles.levelValue}>Level {LEVEL}</ThemedText>
+          <View
+            style={[
+              styles.levelCard,
+              { backgroundColor: palette.card, borderColor: palette.cardBorder },
+            ]}
+          >
+            <ThemedText type="section" style={styles.levelLabel}>
+              Level {LEVEL}
+            </ThemedText>
             <View style={[styles.xpTrack, { backgroundColor: palette.cardBorder }]}>
               <View
                 style={[
@@ -117,26 +116,19 @@ export default function ProfileScreen() {
                 ]}
               />
             </View>
-            <ThemedText
-              style={styles.xpText}
-              lightColor={Colors.light.icon}
-              darkColor={Colors.dark.icon}
-            >
+            <ThemedText type="caption" style={{ color: AppColors.muted }}>
               {XP.current} / {XP.nextLevel} XP
             </ThemedText>
           </View>
 
-          {/* Stats — flat cards */}
           <View style={styles.statsRow}>
             <View style={styles.statCardWrap}>
               <BaseCard>
                 <View style={styles.statContent}>
-                  <ThemedText style={styles.statValue}>{STATS.gamesPlayed}</ThemedText>
-                  <ThemedText
-                    style={styles.statLabel}
-                    lightColor={Colors.light.icon}
-                    darkColor={Colors.dark.icon}
-                  >
+                  <ThemedText type="section" style={styles.statValue}>
+                    {STATS.gamesPlayed}
+                  </ThemedText>
+                  <ThemedText type="caption" style={{ color: AppColors.muted }}>
                     Games
                   </ThemedText>
                 </View>
@@ -145,12 +137,10 @@ export default function ProfileScreen() {
             <View style={styles.statCardWrap}>
               <BaseCard>
                 <View style={styles.statContent}>
-                  <ThemedText style={styles.statValue}>{STATS.wins}</ThemedText>
-                  <ThemedText
-                    style={styles.statLabel}
-                    lightColor={Colors.light.icon}
-                    darkColor={Colors.dark.icon}
-                  >
+                  <ThemedText type="section" style={styles.statValue}>
+                    {STATS.wins}
+                  </ThemedText>
+                  <ThemedText type="caption" style={{ color: AppColors.muted }}>
                     Wins
                   </ThemedText>
                 </View>
@@ -159,116 +149,120 @@ export default function ProfileScreen() {
             <View style={styles.statCardWrap}>
               <BaseCard>
                 <View style={styles.statContent}>
-                  <ThemedText style={styles.statValue}>{winRate}%</ThemedText>
-                  <ThemedText
-                    style={styles.statLabel}
-                    lightColor={Colors.light.icon}
-                    darkColor={Colors.dark.icon}
-                  >
-                    Win Rate
+                  <ThemedText type="section" style={styles.statValue}>
+                    {winRate}%
+                  </ThemedText>
+                  <ThemedText type="caption" style={{ color: AppColors.muted }}>
+                    Win rate
                   </ThemedText>
                 </View>
               </BaseCard>
             </View>
           </View>
 
-          {/* Leaderboard */}
-          <View style={styles.section}>
-            <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
+          <Pressable
+            onPress={() => router.push('/(tabs)/profile/leaderboard')}
+            style={({ pressed }) => [
+              styles.leaderboardRow,
+              { backgroundColor: palette.card, borderColor: palette.cardBorder },
+              pressed && { opacity: 0.9 },
+            ]}
+          >
+            <MaterialIcons name="leaderboard" size={ICON_SIZE_CARD} color={palette.tint} />
+            <ThemedText type="section" style={styles.leaderboardRowText}>
               Leaderboard
             </ThemedText>
-            {LEADERBOARD.map((player) => {
-              const wr =
-                player.gamesPlayed > 0
-                  ? Math.round((player.wins / player.gamesPlayed) * 100)
-                  : 0;
-              return (
-                <BaseCard key={player.rank} showChevron onPress={() => {}}>
-                  <View style={styles.leaderboardRow}>
-                    <Avatar initials={player.avatar} size="small" />
-                    <View style={styles.leaderboardInfo}>
-                      <ThemedText style={styles.leaderboardName}>{player.name}</ThemedText>
-                      <ThemedText
-                        style={styles.leaderboardStats}
-                        lightColor={Colors.light.icon}
-                        darkColor={Colors.dark.icon}
-                      >
-                        {player.wins} wins · {wr}% win rate
-                      </ThemedText>
-                    </View>
-                  </View>
-                </BaseCard>
-              );
-            })}
-          </View>
+            <ThemedText
+              type="caption"
+              style={{ color: AppColors.muted, flex: 1 }}
+              numberOfLines={1}
+            >
+              Top players
+            </ThemedText>
+            <MaterialIcons name="chevron-right" size={ICON_SIZE_CARD} color={AppColors.muted} />
+          </Pressable>
 
-          {/* Badges */}
           <View style={styles.section}>
-            <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
+            <ThemedText type="section" style={styles.sectionTitle}>
               Badges
             </ThemedText>
             <View style={styles.badgesGrid}>
               {BADGES.map((badge) => (
-                <BaseCard key={badge.id} style={[styles.badgeCard, !badge.earned ? styles.badgeLocked : undefined]}>
-                  <View style={styles.badgeContent}>
-                    <ThemedText style={styles.badgeEmoji}>{badge.emoji}</ThemedText>
-                    <ThemedText
-                      style={[styles.badgeName, !badge.earned && styles.badgeNameLocked]}
-                      numberOfLines={1}
-                    >
-                      {badge.name}
-                    </ThemedText>
+                <View
+                  key={badge.id}
+                  style={[
+                    styles.badgeCell,
+                    {
+                      backgroundColor: palette.card,
+                      borderColor: badge.earned ? palette.cardBorder : AppColors.border,
+                    },
+                    !badge.earned && styles.badgeLockedCell,
+                  ]}
+                >
+                  {!badge.earned && (
+                    <View style={styles.lockCorner}>
+                      <MaterialIcons name="lock" size={ICON_SIZE_CARD} color={AppColors.muted} />
+                    </View>
+                  )}
+                  <ThemedText
+                    style={[styles.badgeEmoji, !badge.earned && { opacity: 0.35 }]}
+                  >
+                    {badge.emoji}
+                  </ThemedText>
+                  <ThemedText
+                    type="caption"
+                    style={[
+                      styles.badgeName,
+                      !badge.earned && { color: AppColors.muted },
+                    ]}
+                    numberOfLines={2}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.85}
+                  >
+                    {badge.name}
+                  </ThemedText>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <ThemedText type="section" style={styles.sectionTitle}>
+              Favorite games
+            </ThemedText>
+            <View style={{ gap: CARD_GAP }}>
+              {FAVORITE_GAMES.map((game) => (
+                <BaseCard key={game.id} showChevron onPress={() => {}}>
+                  <View style={styles.gameRow}>
+                    <ThemedText style={styles.gameEmoji}>{game.emoji}</ThemedText>
+                    <ThemedText type="body">{game.name}</ThemedText>
                   </View>
                 </BaseCard>
               ))}
             </View>
           </View>
 
-          {/* Favorite games */}
           <View style={styles.section}>
-            <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
-              Favorite Games
-            </ThemedText>
-            {FAVORITE_GAMES.map((game) => (
-              <BaseCard key={game.id} showChevron onPress={() => {}}>
-                <View style={styles.gameRow}>
-                  <ThemedText style={styles.gameEmoji}>{game.emoji}</ThemedText>
-                  <ThemedText style={styles.gameName}>{game.name}</ThemedText>
-                </View>
-              </BaseCard>
-            ))}
-          </View>
-
-          {/* Settings */}
-          <View style={styles.section}>
-            <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
+            <ThemedText type="section" style={styles.sectionTitle}>
               Settings
             </ThemedText>
             <View style={styles.settingsList}>
-              <View style={[styles.settingsRow, { backgroundColor: palette.card, borderColor: palette.cardBorder }]}>
-                <MaterialIcons name="light-mode" size={24} color={palette.icon} />
-                <ThemedText style={styles.settingsLabel}>Light theme</ThemedText>
-                <Switch
-                value={!isDark}
-                onValueChange={toggleTheme}
-                trackColor={{ false: palette.cardBorder, true: palette.tint }}
-                thumbColor="#fff"
-              />
-              </View>
-            {SETTINGS.map((item) => (
-              <Pressable
-                key={item.id}
-                style={({ pressed }) => [
-                  styles.settingsRow,
-                  { backgroundColor: palette.card, borderColor: palette.cardBorder },
-                  pressed && styles.pressed,
-                ]}
-              >
-                <MaterialIcons name={item.icon as any} size={24} color={palette.icon} />
-                <ThemedText style={styles.settingsLabel}>{item.label}</ThemedText>
-                <MaterialIcons name="chevron-right" size={24} color={palette.icon} />
-              </Pressable>
-            ))}
+              {SETTINGS.map((item) => (
+                <Pressable
+                  key={item.id}
+                  style={({ pressed }) => [
+                    styles.settingsRow,
+                    { backgroundColor: palette.card, borderColor: palette.cardBorder },
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <MaterialIcons name={item.icon} size={ICON_SIZE_CARD} color={palette.icon} />
+                  <ThemedText type="body" style={styles.settingsLabel}>
+                    {item.label}
+                  </ThemedText>
+                  <MaterialIcons name="chevron-right" size={ICON_SIZE_CARD} color={AppColors.muted} />
+                </Pressable>
+              ))}
             </View>
           </View>
         </ScrollView>
@@ -282,94 +276,115 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   scroll: { flex: 1 },
   scrollContent: {
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.sm,
     paddingBottom: Spacing.lg,
     alignItems: 'center',
+    gap: SECTION_GAP,
   },
   avatarWrap: {
-    marginTop: Spacing.md,
-    marginBottom: Spacing.xs,
+    marginTop: Spacing.sm,
     position: 'relative',
   },
   avatarOuter: {
-    width: 160,
-    height: 160,
-    borderRadius: 80,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     overflow: 'hidden',
-    borderWidth: 4,
-    borderColor: 'transparent',
+    borderWidth: 3,
+    borderColor: AppColors.border,
   },
-  avatarImage: { width: '100%', height: '100%' },
   editAvatarBtn: {
     position: 'absolute',
     bottom: 0,
     right: 0,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
   name: { marginBottom: Spacing.xs },
-  username: { fontSize: 15, marginBottom: Spacing.sm },
+  username: { marginBottom: 0 },
   levelCard: {
     width: '100%',
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  levelLabel: { marginBottom: Spacing.xs },
+  xpTrack: {
+    width: '100%',
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: Spacing.xs,
+  },
+  xpFill: { height: '100%', borderRadius: 3 },
+  statsRow: {
+    flexDirection: 'row',
+    gap: CARD_GAP,
+    width: '100%',
+  },
+  statCardWrap: { flex: 1 },
+  statContent: { alignItems: 'center' },
+  statValue: { marginBottom: Spacing.xs },
+  leaderboardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: Spacing.sm,
+  },
+  leaderboardRowText: { fontWeight: '700' },
+  section: { width: '100%', gap: Spacing.sm },
+  sectionTitle: {},
+  badgesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: CARD_GAP,
+  },
+  badgeCell: {
+    width: '47%',
+    minWidth: '44%',
+    flexGrow: 1,
     padding: Spacing.sm,
     borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
-    marginBottom: Spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    minHeight: 96,
+    justifyContent: 'center',
+    position: 'relative',
   },
-  levelValue: { fontSize: 24, fontWeight: '800', marginBottom: Spacing.xs },
-  xpTrack: {
+  badgeLockedCell: {
+    backgroundColor: '#141414',
+  },
+  lockCorner: {
+    position: 'absolute',
+    top: Spacing.xs,
+    right: Spacing.xs,
+  },
+  badgeEmoji: { fontSize: 22, marginBottom: Spacing.xs },
+  badgeName: {
+    fontWeight: '600',
+    textAlign: 'center',
     width: '100%',
-    height: 8,
-    borderRadius: 4,
-    overflow: 'hidden',
-    marginBottom: Spacing.xs,
   },
-  xpFill: { height: '100%', borderRadius: 4 },
-  xpText: { fontSize: 13 },
-  statsRow: {
-    flexDirection: 'row',
-    gap: Spacing.xs,
-    width: '100%',
-    marginBottom: Spacing.md,
-  },
-  statCardWrap: { flex: 1 },
-  statContent: { alignItems: 'center' },
-  statValue: { fontSize: 20, fontWeight: '700', marginBottom: Spacing.xs },
-  statLabel: { fontSize: 12 },
-  leaderboardRow: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  section: { width: '100%', marginBottom: Spacing.md },
-  sectionTitle: { fontSize: 16, marginBottom: Spacing.sm },
-  leaderboardInfo: { flex: 1, marginLeft: Spacing.sm, justifyContent: 'center' },
-  leaderboardName: { fontSize: 16, fontWeight: '600', marginBottom: 2 },
-  leaderboardStats: { fontSize: 13 },
-  badgesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs },
-  badgeCard: { flex: 1, minWidth: 90 },
-  badgeLocked: { opacity: 0.5 },
-  badgeContent: { alignItems: 'center' },
-  badgeEmoji: { fontSize: 24, marginBottom: Spacing.xs },
-  badgeName: { fontSize: 12, fontWeight: '600', textAlign: 'center' },
-  badgeNameLocked: { opacity: 0.7 },
-  gameRow: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  gameEmoji: { fontSize: 24, marginRight: Spacing.sm },
-  gameName: { fontSize: 16 },
-  settingsList: { gap: Spacing.xs },
+  gameRow: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: Spacing.sm },
+  gameEmoji: { fontSize: 22 },
+  settingsList: { gap: CARD_GAP },
   settingsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: Spacing.sm,
     borderRadius: 12,
     borderWidth: 1,
-    minHeight: 44,
+    minHeight: 48,
   },
-  settingsLabel: { flex: 1, marginLeft: Spacing.sm, fontSize: 16 },
+  settingsLabel: { flex: 1, marginLeft: Spacing.sm },
   pressed: { opacity: 0.9 },
 });

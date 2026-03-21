@@ -4,6 +4,7 @@ export default function ChatLayout() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
+      <Stack.Screen name="add-friend" />
       <Stack.Screen name="[id]" />
     </Stack>
   );

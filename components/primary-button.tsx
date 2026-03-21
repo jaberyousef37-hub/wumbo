@@ -1,7 +1,8 @@
 import { Pressable, StyleSheet, Text, type ViewStyle } from 'react-native';
 
+import { useTheme } from '@/contexts/theme-context';
 import { Colors } from '@/constants/theme';
-import { Spacing } from '@/constants/spacing';
+import { BUTTON_HEIGHT, BUTTON_RADIUS, Spacing } from '@/constants/spacing';
 
 type PrimaryButtonProps = {
   label: string;
@@ -18,6 +19,8 @@ export function PrimaryButton({
   style,
   variant = 'default',
 }: PrimaryButtonProps) {
+  const { isDark } = useTheme();
+  const palette = isDark ? Colors.dark : Colors.light;
   const isInverted = variant === 'inverted';
   return (
     <Pressable
@@ -25,38 +28,34 @@ export function PrimaryButton({
       disabled={disabled}
       style={({ pressed }) => [
         styles.button,
-        isInverted && styles.buttonInverted,
+        { backgroundColor: isInverted ? palette.card : palette.tint },
         disabled && styles.disabled,
         pressed && !disabled && styles.pressed,
         style,
       ]}
     >
-      <Text style={[styles.label, isInverted && styles.labelInverted]}>{label}</Text>
+      <Text
+        style={[
+          styles.label,
+          { color: isInverted ? palette.tint : palette.text },
+        ]}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: Colors.dark.tint,
     paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.md,
-    borderRadius: 12,
+    borderRadius: BUTTON_RADIUS,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 44,
+    minHeight: BUTTON_HEIGHT,
   },
-  buttonInverted: {
-    backgroundColor: '#fff',
-  },
-  label: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  labelInverted: {
-    color: Colors.dark.tint,
-  },
+  label: { fontSize: 15, fontWeight: '700' },
   disabled: { opacity: 0.5 },
   pressed: { opacity: 0.9 },
 });

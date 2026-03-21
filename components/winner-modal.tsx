@@ -13,6 +13,7 @@ import Animated, {
 import { ConfettiEmoji } from '@/components/confetti-emoji';
 import { ConfettiView } from '@/components/confetti-view';
 import { ThemedText } from '@/components/themed-text';
+import { useTheme } from '@/contexts/theme-context';
 import { Colors } from '@/constants/theme';
 
 type WinnerModalProps = {
@@ -32,6 +33,8 @@ export function WinnerModal({
   onPlayAgain,
   onConfettiComplete,
 }: WinnerModalProps) {
+  const { isDark } = useTheme();
+  const palette = isDark ? Colors.dark : Colors.light;
   const scale = useSharedValue(0);
   const opacity = useSharedValue(0);
 
@@ -64,13 +67,7 @@ export function WinnerModal({
         <ConfettiView visible={visible} onComplete={onConfettiComplete ?? (() => {})} />
         <ConfettiEmoji visible={visible} />
         <Animated.View style={[styles.card, cardStyle]}>
-          <LinearGradient
-            colors={[Colors.dark.accentPink, Colors.dark.accentYellow, Colors.dark.accentPink]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.cardBorder}
-          >
-            <View style={styles.cardInner}>
+          <View style={[styles.cardBorder, { backgroundColor: palette.card, borderColor: palette.cardBorder }]}>
               <Animated.View style={contentStyle}>
                 <Text style={styles.trophy}>🏆</Text>
                 <ThemedText style={styles.title}>{winnerName} Wins!</ThemedText>
@@ -83,7 +80,7 @@ export function WinnerModal({
                       <ThemedText style={styles.scoreValue}>{score.wins}</ThemedText>
                       <ThemedText style={styles.scoreLabel}>Wins</ThemedText>
                     </View>
-                    <View style={styles.scoreDivider} />
+                    <View style={[styles.scoreDivider, { backgroundColor: palette.cardBorder }]} />
                     <View style={styles.scoreItem}>
                       <ThemedText style={styles.scoreValue}>{score.losses}</ThemedText>
                       <ThemedText style={styles.scoreLabel}>Losses</ThemedText>
@@ -96,7 +93,7 @@ export function WinnerModal({
                   android_ripple={{ color: 'rgba(255,255,255,0.3)' }}
                 >
                   <LinearGradient
-                    colors={[Colors.dark.tint, Colors.dark.accentPink]}
+                    colors={[palette.tint, palette.accentPink]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                     style={styles.playAgainGradient}
@@ -105,8 +102,7 @@ export function WinnerModal({
                   </LinearGradient>
                 </Pressable>
               </Animated.View>
-            </View>
-          </LinearGradient>
+          </View>
         </Animated.View>
       </View>
     </Modal>
@@ -124,16 +120,10 @@ const styles = StyleSheet.create({
     marginHorizontal: 32,
   },
   cardBorder: {
-    borderRadius: 28,
-    padding: 4,
-  },
-  cardInner: {
-    backgroundColor: Colors.dark.card,
     borderRadius: 24,
     padding: 32,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: Colors.dark.cardBorder,
   },
   trophy: {
     fontSize: 64,
@@ -176,7 +166,6 @@ const styles = StyleSheet.create({
   scoreDivider: {
     width: 1,
     height: 32,
-    backgroundColor: Colors.dark.cardBorder,
     marginHorizontal: 24,
   },
   playAgainBtn: {
