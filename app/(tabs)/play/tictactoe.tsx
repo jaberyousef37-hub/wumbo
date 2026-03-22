@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { HowToPlayButton } from '@/components/how-to-play-button';
 import { ThemedText } from '@/components/themed-text';
 import { WinnerModal } from '@/components/winner-modal';
 import { useTheme } from '@/contexts/theme-context';
@@ -243,6 +244,7 @@ export default function TicTacToeScreen() {
               </View>
             </View>
           </View>
+          <HowToPlayButton gameId="tictactoe" tint="#fff" />
         </LinearGradient>
 
         {/* Turn indicator */}

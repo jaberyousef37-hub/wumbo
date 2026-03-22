@@ -70,7 +70,13 @@ export function WinnerModal({
           <View style={[styles.cardBorder, { backgroundColor: palette.card, borderColor: palette.cardBorder }]}>
               <Animated.View style={contentStyle}>
                 <Text style={styles.trophy}>🏆</Text>
-                <ThemedText style={styles.title}>{winnerName} Wins!</ThemedText>
+                <ThemedText style={styles.title}>
+                  {winnerName === 'You'
+                    ? 'You win!'
+                    : /draw|stalemate/i.test(winnerName)
+                      ? winnerName
+                      : `${winnerName} Wins!`}
+                </ThemedText>
                 {subtitle && (
                   <ThemedText style={styles.subtitle}>{subtitle}</ThemedText>
                 )}

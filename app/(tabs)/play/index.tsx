@@ -1,141 +1,190 @@
 import type { Href } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useRouter } from 'expo-router';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
-import { AppColors, Colors } from '@/constants/theme';
+import { AppColors } from '@/constants/theme';
 import { CARD_GAP, CARD_PADDING, SECTION_GAP, Spacing } from '@/constants/spacing';
-import { ICON_SIZE_CARD } from '@/constants/typography';
 
-const ACCENT = '#7C3AED';
+const BG = AppColors.background;
+const ACCENT = AppColors.tint;
 
-type GameItem = {
+type SectionId = 'card' | 'board' | 'party' | 'solo';
+
+type PlayGame = {
   id: string;
   name: string;
   icon: keyof typeof MaterialIcons.glyphMap;
-  meta: string;
+  section: SectionId;
+  activePlayers: number;
+  duration: string;
   subtitle: string;
   route: Href;
+  isNew?: boolean;
 };
 
-const GAMES: GameItem[] = [
+const SECTION_ORDER: SectionId[] = ['card', 'board', 'party', 'solo'];
+const SECTION_LABELS: Record<SectionId, string> = {
+  card: 'Card Games',
+  board: 'Board Games',
+  party: 'Party Games',
+  solo: 'Solo',
+};
+
+const GAMES: PlayGame[] = [
   {
-    id: '1',
-    name: 'Chess',
-    icon: 'emoji-events',
-    meta: '2 players • 15–45 min',
-    subtitle: 'Classic strategy — quick matches with friends.',
-    route: '/(tabs)/play/chess',
+    id: 'bs',
+    name: 'BS',
+    icon: 'casino',
+    section: 'card',
+    activePlayers: 812,
+    duration: '10–20 min',
+    subtitle: 'Bullshit — bluff, call BS, empty your hand.',
+    route: '/(tabs)/play/bs' as Href,
+    isNew: true,
   },
   {
-    id: '2',
+    id: 'uno',
     name: 'UNO',
     icon: 'style',
-    meta: '2–6 players • 5–15 min',
+    section: 'card',
+    activePlayers: 2103,
+    duration: '5–15 min',
     subtitle: 'Drop cards, shout UNO, ruin friendships (nicely).',
     route: '/(tabs)/play/uno',
   },
   {
-    id: '3',
-    name: 'Trivia',
-    icon: 'quiz',
-    meta: '2–8 players • 5–10 min',
-    subtitle: 'Fast questions — who knows useless facts?',
-    route: '/(tabs)/play/trivia',
+    id: 'chess',
+    name: 'Chess',
+    icon: 'emoji-events',
+    section: 'board',
+    activePlayers: 890,
+    duration: '15–45 min',
+    subtitle: 'Classic strategy — quick matches with friends.',
+    route: '/(tabs)/play/chess',
   },
   {
-    id: '4',
+    id: 'tictactoe',
     name: 'Tic Tac Toe',
     icon: 'grid-3x3',
-    meta: '2 players • 2 min',
+    section: 'board',
+    activePlayers: 420,
+    duration: '2 min',
     subtitle: 'Three in a row. Perfect while you wait.',
     route: '/(tabs)/play/tictactoe-details',
   },
   {
-    id: '5',
-    name: 'Snake',
-    icon: 'games',
-    meta: '1 player • endless',
-    subtitle: 'Solo high-score chase.',
-    route: '/(tabs)/play/snake',
+    id: 'snakes-ladders',
+    name: 'Snakes & Ladders',
+    icon: 'timeline',
+    section: 'board',
+    activePlayers: 640,
+    duration: '10–20 min',
+    subtitle: 'Dice, ladders up, snakes down — race to 100 with friends or CPU.',
+    route: '/(tabs)/play/snakes-ladders' as Href,
+    isNew: true,
   },
   {
-    id: '6',
+    id: 'trivia',
+    name: 'Trivia',
+    icon: 'quiz',
+    section: 'party',
+    activePlayers: 1410,
+    duration: '5–10 min',
+    subtitle: 'Fast questions — who knows useless facts?',
+    route: '/(tabs)/play/trivia',
+  },
+  {
+    id: 'shell',
     name: 'Shell Game',
     icon: 'local-bar',
-    meta: '2 players • 2 min',
+    section: 'party',
+    activePlayers: 156,
+    duration: '2 min',
     subtitle: 'Follow the cup — host or guess with a code.',
     route: '/(tabs)/play/shell-game',
+    isNew: true,
+  },
+  {
+    id: 'would-you-rather',
+    name: 'Would You Rather',
+    icon: 'compare-arrows',
+    section: 'party',
+    activePlayers: 980,
+    duration: '5–15 min',
+    subtitle: 'Split-screen dilemmas — solo or pass-the-phone with friends.',
+    route: '/(tabs)/play/would-you-rather' as Href,
+    isNew: true,
+  },
+  {
+    id: 'snake',
+    name: 'Snake',
+    icon: 'games',
+    section: 'solo',
+    activePlayers: 3201,
+    duration: 'Endless',
+    subtitle: 'Solo high-score chase.',
+    route: '/(tabs)/play/snake',
+    isNew: true,
   },
 ];
 
-const palette = Colors.dark;
-
-function GameCard({ game, index }: { game: GameItem; index: number }) {
+function GameCard({
+  game,
+  animDelay,
+}: {
+  game: PlayGame;
+  animDelay: number;
+}) {
   const router = useRouter();
 
   return (
-    <Animated.View entering={FadeInDown.delay(index * 50).springify().damping(16)}>
-      <View
-        style={[
-          styles.card,
-          {
-            backgroundColor: palette.card,
-            borderColor: palette.cardBorder,
-          },
-        ]}
-      >
-        <Pressable
-          onPress={() => router.push(game.route)}
-          style={({ pressed }) => [styles.cardMain, pressed && styles.pressed]}
-        >
-          <View style={styles.cardTop}>
-            <View style={[styles.iconWrap, { borderColor: `${ACCENT}55` }]}>
-              <MaterialIcons name={game.icon} size={ICON_SIZE_CARD} color={ACCENT} />
-            </View>
+    <Animated.View entering={FadeInDown.delay(animDelay).springify().damping(17)}>
+      <View style={styles.gameCard}>
+        <View style={styles.cardTopRow}>
+          <View style={styles.iconWrap}>
+            <MaterialIcons name={game.icon} size={60} color={ACCENT} />
           </View>
-          <ThemedText type="section" style={styles.gameName}>
-            {game.name}
-          </ThemedText>
-          <ThemedText type="caption" style={[styles.meta, { color: AppColors.muted }]}>
-            {game.meta}
-          </ThemedText>
-          <ThemedText type="body" style={{ color: AppColors.muted }} numberOfLines={2}>
-            {game.subtitle}
-          </ThemedText>
-        </Pressable>
+          <View style={styles.cardTitleCol}>
+            <View style={styles.nameRow}>
+              <Text style={styles.gameName}>{game.name}</Text>
+              {game.isNew && (
+                <View style={styles.newBadge}>
+                  <Text style={styles.newBadgeText}>New</Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.metaLine}>
+              {game.activePlayers.toLocaleString()} playing · {game.duration}
+            </Text>
+            <ThemedText type="body" style={styles.subtitle} numberOfLines={2}>
+              {game.subtitle}
+            </ThemedText>
+          </View>
+        </View>
         <View style={styles.actionsRow}>
           <Pressable
             onPress={() => router.push(game.route)}
-            style={({ pressed }) => [
-              styles.actionBtn,
-              styles.actionSolo,
-              {
-                borderColor: ACCENT,
-                backgroundColor: 'transparent',
-              },
-              pressed && styles.pressed,
-            ]}
+            style={({ pressed }) => [styles.btnSolo, pressed && styles.pressed]}
           >
-            <ThemedText type="caption" style={[styles.actionLabel, { color: ACCENT }]}>
-              Play solo
-            </ThemedText>
+            <Text style={styles.btnSoloText}>Solo</Text>
           </Pressable>
           <Pressable
             onPress={() => router.push('/(tabs)/play/create-room' as Href)}
-            style={({ pressed }) => [
-              styles.actionBtn,
-              styles.actionInvite,
-              { backgroundColor: ACCENT },
-              pressed && styles.pressed,
-            ]}
+            style={({ pressed }) => [styles.btnMulti, pressed && styles.pressed]}
           >
-            <ThemedText type="caption" style={[styles.actionLabel, { color: '#fff' }]}>
-              Host & invite
-            </ThemedText>
+            <Text style={styles.btnMultiText}>Multiplayer</Text>
           </Pressable>
         </View>
       </View>
@@ -144,87 +193,206 @@ function GameCard({ game, index }: { game: GameItem; index: number }) {
 }
 
 export default function PlayScreen() {
+  const [query, setQuery] = useState('');
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return GAMES;
+    return GAMES.filter(
+      (g) => g.name.toLowerCase().includes(q) || g.subtitle.toLowerCase().includes(q),
+    );
+  }, [query]);
+
+  const sections = useMemo(() => {
+    const map = new Map<SectionId, PlayGame[]>();
+    for (const id of SECTION_ORDER) map.set(id, []);
+    for (const g of filtered) map.get(g.section)!.push(g);
+    return SECTION_ORDER.map((id) => ({ id, label: SECTION_LABELS[id], games: map.get(id)! })).filter(
+      (s) => s.games.length > 0,
+    );
+  }, [filtered]);
+
+  const sectionsAnimated = useMemo(() => {
+    let d = 100;
+    return sections.map((s) => {
+      const headerDelay = d;
+      d += 55;
+      const games = s.games.map((game) => {
+        const delay = d;
+        d += 48;
+        return { game, delay };
+      });
+      return { id: s.id, label: s.label, headerDelay, games };
+    });
+  }, [sections]);
+
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top']}>
-      <Animated.View entering={FadeIn.duration(400)} style={styles.container}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <Animated.View entering={FadeIn.duration(380)} style={styles.container}>
         <View style={styles.header}>
           <ThemedText type="title" style={styles.headerTitle}>
             Play
           </ThemedText>
-          <ThemedText type="body" style={{ color: AppColors.muted }}>
-            Party games in your pocket — like Game Pigeon, with a Wumbo twist. Go solo or host a room and
-            ping friends from Chat.
+          <ThemedText type="caption" style={styles.headerSub}>
+            Solo practice or host a room — your call.
           </ThemedText>
         </View>
 
-        <FlatList
-          data={GAMES}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item, index }) => <GameCard game={item} index={index} />}
-          contentContainerStyle={styles.listContent}
+        <View style={styles.searchWrap}>
+          <MaterialIcons name="search" size={22} color={AppColors.muted} style={styles.searchIcon} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search games"
+            placeholderTextColor={AppColors.muted}
+            style={styles.searchInput}
+            autoCorrect={false}
+            autoCapitalize="none"
+            clearButtonMode="while-editing"
+          />
+        </View>
+
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-        />
+        >
+          {sections.length === 0 ? (
+            <View style={styles.emptySearch}>
+              <Text style={styles.emptySearchText}>No games match “{query}”</Text>
+            </View>
+          ) : (
+            sectionsAnimated.map((section) => (
+              <View key={section.id} style={styles.sectionBlock}>
+                <Animated.View entering={FadeInDown.delay(section.headerDelay).springify().damping(18)}>
+                  <Text style={styles.sectionTitle}>{section.label}</Text>
+                </Animated.View>
+                <View style={styles.sectionCards}>
+                  {section.games.map(({ game, delay }) => (
+                    <GameCard key={game.id} game={game} animDelay={delay} />
+                  ))}
+                </View>
+              </View>
+            ))
+          )}
+        </ScrollView>
       </Animated.View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
+  safe: { flex: 1, backgroundColor: BG },
   container: { flex: 1 },
   header: {
     paddingHorizontal: Spacing.sm,
     paddingTop: Spacing.xs,
-    paddingBottom: SECTION_GAP / 2,
-    gap: Spacing.xs,
+    paddingBottom: Spacing.sm,
+    gap: 4,
   },
-  headerTitle: { fontWeight: '800' },
-  listContent: {
-    paddingHorizontal: Spacing.sm,
-    paddingBottom: Spacing.lg,
-    gap: CARD_GAP,
-  },
-  card: {
-    borderRadius: 12,
+  headerTitle: { fontWeight: '800', color: AppColors.text },
+  headerSub: { color: AppColors.muted },
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: Spacing.sm,
+    marginBottom: Spacing.sm,
+    backgroundColor: AppColors.card,
+    borderRadius: 14,
     borderWidth: 1,
+    borderColor: AppColors.cardBorder,
+    paddingHorizontal: Spacing.sm,
+  },
+  searchIcon: { marginRight: 6 },
+  searchInput: {
+    flex: 1,
+    color: AppColors.text,
+    fontSize: 16,
+    paddingVertical: 12,
+    fontWeight: '500',
+  },
+  scroll: { flex: 1 },
+  scrollContent: {
+    paddingHorizontal: Spacing.sm,
+    paddingBottom: Spacing.lg + Spacing.md,
+    gap: SECTION_GAP,
+  },
+  sectionBlock: { gap: Spacing.sm },
+  sectionTitle: {
+    color: AppColors.text,
+    fontSize: 17,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  sectionCards: { gap: CARD_GAP },
+  gameCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: AppColors.cardBorder,
+    backgroundColor: AppColors.card,
     overflow: 'hidden',
   },
-  cardMain: {
-    padding: CARD_PADDING,
-  },
-  cardTop: {
+  cardTopRow: {
     flexDirection: 'row',
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-    marginBottom: Spacing.sm,
+    gap: Spacing.md,
+    padding: CARD_PADDING,
+    alignItems: 'flex-start',
   },
   iconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    borderWidth: 1,
+    width: 72,
+    height: 72,
+    borderRadius: 16,
+    backgroundColor: 'rgba(124, 58, 237, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(124, 58, 237, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(124, 58, 237, 0.35)',
   },
-  meta: { marginBottom: Spacing.xs, fontWeight: '600' },
-  gameName: { marginBottom: 4 },
+  cardTitleCol: { flex: 1, minWidth: 0 },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 4,
+  },
+  gameName: { color: AppColors.text, fontSize: 20, fontWeight: '800' },
+  newBadge: {
+    backgroundColor: 'rgba(124, 58, 237, 0.35)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.5)',
+  },
+  newBadgeText: { color: '#E9D5FF', fontSize: 11, fontWeight: '800' },
+  metaLine: { color: AppColors.muted, fontSize: 13, fontWeight: '600', marginBottom: 6 },
+  subtitle: { color: AppColors.muted, lineHeight: 20 },
   actionsRow: {
     flexDirection: 'row',
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: 'rgba(255,255,255,0.08)',
   },
-  actionBtn: {
+  btnSolo: {
     flex: 1,
-    paddingVertical: Spacing.sm,
+    paddingVertical: Spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  actionSolo: {
     borderRightWidth: StyleSheet.hairlineWidth,
     borderRightColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'transparent',
   },
-  actionInvite: {},
-  actionLabel: { fontWeight: '700' },
-  pressed: { opacity: 0.92 },
+  btnSoloText: { color: ACCENT, fontWeight: '800', fontSize: 15 },
+  btnMulti: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: ACCENT,
+  },
+  btnMultiText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  pressed: { opacity: 0.9 },
+  emptySearch: { paddingVertical: Spacing.lg + Spacing.md, alignItems: 'center' },
+  emptySearchText: { color: AppColors.muted, fontSize: 16, fontWeight: '600' },
 });

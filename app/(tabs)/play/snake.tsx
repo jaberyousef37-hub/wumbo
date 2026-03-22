@@ -6,9 +6,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PanResponder, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { HowToPlayButton } from '@/components/how-to-play-button';
 import { PrimaryButton } from '@/components/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { AppColors } from '@/constants/theme';
+import { recordRecentGame } from '@/lib/recent-games';
 import { playClick } from '@/lib/sounds';
 
 const INITIAL_SPEED = 220;
@@ -81,6 +83,7 @@ export default function SnakeScreen() {
   const gridSizeRef = useRef(gridSize);
   const scoreRef = useRef(score);
   const tickRef = useRef<() => void>(() => {});
+  const snakeRecordedRef = useRef(false);
 
   directionRef.current = direction;
   gridSizeRef.current = gridSize;
@@ -178,6 +181,21 @@ export default function SnakeScreen() {
     });
   }, []);
 
+  useEffect(() => {
+    if (!gameOver) {
+      snakeRecordedRef.current = false;
+      return;
+    }
+    if (snakeRecordedRef.current) return;
+    snakeRecordedRef.current = true;
+    const beatBest = score > highScore;
+    void recordRecentGame({
+      gameName: 'Snake',
+      result: beatBest ? 'win' : 'loss',
+      score: `${score} pts`,
+    });
+  }, [gameOver, score, highScore]);
+
   const handleRestart = useCallback(() => {
     const s0 = makeInitialSnake(mid);
     setSnake(s0);
@@ -229,6 +247,7 @@ export default function SnakeScreen() {
           <ThemedText type="defaultSemiBold" style={styles.title} darkColor="#fff">
             Snake
           </ThemedText>
+          <HowToPlayButton gameId="snake" tint="#fff" />
           <View style={styles.scores}>
             <ThemedText style={styles.scoreText}>Score: {score}</ThemedText>
             <ThemedText style={styles.highScoreText}>Best: {Math.max(score, highScore)}</ThemedText>
@@ -340,7 +359,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   backBtn: { marginRight: 12 },
-  title: { fontSize: 20, flex: 1 },
+  title: { fontSize: 20, flex: 1, minWidth: 0 },
   scores: { alignItems: 'flex-end' },
   scoreText: { color: '#00ff88', fontSize: 16, fontWeight: '700' },
   highScoreText: { color: AppColors.textSecondary, fontSize: 14 },

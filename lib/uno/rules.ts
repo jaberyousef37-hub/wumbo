@@ -1,11 +1,10 @@
 import { shuffle } from './deck';
-import type { UnoCard, UnoGameState, UnoPlayer, UnoSuit } from './types';
+import type { UnoCard, UnoGameState, UnoSeat, UnoSuit } from './types';
 
 export function topCard(state: UnoGameState): UnoCard | undefined {
   return state.discard[state.discard.length - 1];
 }
 
-/** Hand has a colored card matching active color (for Wild Draw Four legality). */
 export function handHasColorMatch(hand: UnoCard[], activeColor: UnoSuit): boolean {
   return hand.some((c) => c.color !== null && c.color === activeColor);
 }
@@ -15,11 +14,18 @@ export function isCardPlayable(
   hand: UnoCard[],
   top: UnoCard,
   activeColor: UnoSuit,
+  drawStack: number,
 ): boolean {
+  if (drawStack > 0) {
+    return card.type === 'draw2';
+  }
+
   if (card.type === 'wild') return true;
+
   if (card.type === 'wild_draw4') {
     return !handHasColorMatch(hand, activeColor);
   }
+
   if (card.color === null) return false;
 
   if (top.type === 'wild' || top.type === 'wild_draw4') {
@@ -32,12 +38,19 @@ export function isCardPlayable(
   return false;
 }
 
-export function getPlayableCards(hand: UnoCard[], top: UnoCard, activeColor: UnoSuit): UnoCard[] {
-  return hand.filter((c) => isCardPlayable(c, hand, top, activeColor));
+export function getPlayableCards(
+  hand: UnoCard[],
+  top: UnoCard,
+  activeColor: UnoSuit,
+  drawStack: number,
+): UnoCard[] {
+  return hand.filter((c) => isCardPlayable(c, hand, top, activeColor, drawStack));
 }
 
-/** Reshuffle discard into deck (keep top card). Returns new deck + discard or null if impossible. */
-export function reshuffleDiscardIfEmpty(deck: UnoCard[], discard: UnoCard[]): { deck: UnoCard[]; discard: UnoCard[] } | null {
+export function reshuffleDiscardIfEmpty(
+  deck: UnoCard[],
+  discard: UnoCard[],
+): { deck: UnoCard[]; discard: UnoCard[] } | null {
   if (discard.length < 2) return null;
   const top = discard[discard.length - 1];
   const rest = discard.slice(0, -1);
@@ -47,13 +60,9 @@ export function reshuffleDiscardIfEmpty(deck: UnoCard[], discard: UnoCard[]): { 
   };
 }
 
-export function drawCards(
-  state: UnoGameState,
-  count: number,
-  target: UnoPlayer,
-): UnoGameState {
-  let { deck, discard, playerHand, aiHand } = state;
-  const hand = target === 'player' ? [...playerHand] : [...aiHand];
+export function drawCards(state: UnoGameState, count: number, target: UnoSeat): UnoGameState {
+  let { deck, discard, hands } = state;
+  const hand = [...hands[target]];
   let drawn = 0;
 
   while (drawn < count) {
@@ -70,11 +79,16 @@ export function drawCards(
     drawn++;
   }
 
+  const nextHands: [UnoCard[], UnoCard[], UnoCard[]] = [
+    target === 0 ? hand : hands[0],
+    target === 1 ? hand : hands[1],
+    target === 2 ? hand : hands[2],
+  ];
+
   return {
     ...state,
     deck,
     discard,
-    playerHand: target === 'player' ? hand : playerHand,
-    aiHand: target === 'ai' ? hand : aiHand,
+    hands: nextHands,
   };
 }

@@ -1,5 +1,6 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import * as ImagePicker from 'expo-image-picker';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -13,6 +14,7 @@ import { useProfile } from '@/contexts/profile-context';
 import { AppColors, Colors } from '@/constants/theme';
 import { CARD_GAP, SECTION_GAP, Spacing } from '@/constants/spacing';
 import { ICON_SIZE_CARD } from '@/constants/typography';
+import { loadRecentGames, type RecentGameRow } from '@/lib/recent-games';
 
 const STATS = { gamesPlayed: 42, wins: 28 };
 const XP = { current: 720, nextLevel: 1000 };
@@ -44,6 +46,13 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { name: profileName, username: profileUsername } = useProfile();
   const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(null);
+  const [recentGames, setRecentGames] = useState<RecentGameRow[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadRecentGames().then(setRecentGames);
+    }, []),
+  );
 
   const displayName = profileName || 'Yousef';
   const displayUsername = profileUsername || '@yousef';
@@ -181,6 +190,53 @@ export default function ProfileScreen() {
             </ThemedText>
             <MaterialIcons name="chevron-right" size={ICON_SIZE_CARD} color={AppColors.muted} />
           </Pressable>
+
+          <View style={styles.section}>
+            <ThemedText type="section" style={styles.sectionTitle}>
+              Recent games
+            </ThemedText>
+            {recentGames.length === 0 ? (
+              <ThemedText type="caption" style={{ color: AppColors.muted }}>
+                Play a game to see your last five results here.
+              </ThemedText>
+            ) : (
+              <View style={{ gap: CARD_GAP }}>
+                {recentGames.map((row) => (
+                  <BaseCard key={row.id}>
+                    <View style={styles.recentGameRow}>
+                      <View style={styles.recentGameMain}>
+                        <ThemedText type="defaultSemiBold" numberOfLines={1}>
+                          {row.gameName}
+                        </ThemedText>
+                        <ThemedText type="caption" style={{ color: AppColors.muted }} numberOfLines={1}>
+                          {row.score} · {row.date}
+                        </ThemedText>
+                      </View>
+                      <View
+                        style={[
+                          styles.recentResultPill,
+                          {
+                            backgroundColor:
+                              row.result === 'win' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.15)',
+                          },
+                        ]}
+                      >
+                        <ThemedText
+                          type="caption"
+                          style={{
+                            fontWeight: '800',
+                            color: row.result === 'win' ? '#22C55E' : '#EF4444',
+                          }}
+                        >
+                          {row.result === 'win' ? 'Win' : 'Loss'}
+                        </ThemedText>
+                      </View>
+                    </View>
+                  </BaseCard>
+                ))}
+              </View>
+            )}
+          </View>
 
           <View style={styles.section}>
             <ThemedText type="section" style={styles.sectionTitle}>
@@ -341,6 +397,18 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   leaderboardRowText: { fontWeight: '700' },
+  recentGameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  recentGameMain: { flex: 1, minWidth: 0, gap: 2 },
+  recentResultPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
   section: { width: '100%', gap: Spacing.sm },
   sectionTitle: {},
   badgesGrid: {

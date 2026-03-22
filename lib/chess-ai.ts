@@ -1,11 +1,15 @@
 /**
- * Chess AI: minimax + alpha-beta; evaluation = material + king safety (Black maximizes).
+ * Chess AI: legal moves, minimax + alpha-beta.
+ * Easy: random | Medium: depth-2, capture-heavy ordering, material + king pressure
+ * Hard: depth-4, material + piece-square tables + king safety
  */
 
 export type Piece = 'K' | 'Q' | 'R' | 'B' | 'N' | 'P' | 'k' | 'q' | 'r' | 'b' | 'n' | 'p';
 export type Board = (Piece | null)[][];
 
-type Move = { fr: number; fc: number; tr: number; tc: number };
+export type ChessMove = { fr: number; fc: number; tr: number; tc: number };
+
+export type AiDifficulty = 'easy' | 'medium' | 'hard';
 
 export function isWhite(p: Piece | null): boolean {
   return p !== null && p === p.toUpperCase();
@@ -112,7 +116,7 @@ function isSquareAttacked(board: Board, row: number, col: number, byWhite: boole
   return false;
 }
 
-function findKing(board: Board, white: boolean): [number, number] | null {
+export function findKing(board: Board, white: boolean): [number, number] | null {
   const k = white ? 'K' : 'k';
   for (let r = 0; r < 8; r++)
     for (let c = 0; c < 8; c++) if (board[r][c] === k) return [r, c];
@@ -160,7 +164,7 @@ export function hasAnyLegalMove(board: Board, whiteTurn: boolean): boolean {
   return false;
 }
 
-export function applyMove(board: Board, m: Move): Board {
+export function applyMove(board: Board, m: ChessMove): Board {
   const next = board.map((row) => [...row]);
   let moved = next[m.fr][m.fc]!;
   next[m.fr][m.fc] = null;
@@ -171,8 +175,8 @@ export function applyMove(board: Board, m: Move): Board {
   return next;
 }
 
-function getAllLegalMoves(board: Board, forBlack: boolean): Move[] {
-  const out: Move[] = [];
+function getAllLegalMoves(board: Board, forBlack: boolean): ChessMove[] {
+  const out: ChessMove[] = [];
   for (let r = 0; r < 8; r++) {
     for (let c = 0; c < 8; c++) {
       const p = board[r][c];
@@ -197,28 +201,231 @@ function pieceVal(p: Piece): number {
   return VAL[p.toLowerCase()] ?? 0;
 }
 
-function evaluate(board: Board): number {
-  let material = 0;
+/** Material only — Black positive. */
+function evaluateMaterial(board: Board): number {
+  let s = 0;
   for (let r = 0; r < 8; r++) {
     for (let c = 0; c < 8; c++) {
       const p = board[r][c];
       if (!p) continue;
       const v = pieceVal(p);
-      material += isBlack(p) ? v : -v;
+      s += isBlack(p) ? v : -v;
     }
   }
-
-  const bKing = findKing(board, false);
-  const wKing = findKing(board, true);
-  let kingSafety = 0;
-  if (bKing && isSquareAttacked(board, bKing[0], bKing[1], true)) kingSafety -= 380;
-  if (wKing && isSquareAttacked(board, wKing[0], wKing[1], false)) kingSafety += 380;
-
-  return material + kingSafety;
+  return s;
 }
 
-function sortMoves(board: Board, moves: Move[]): Move[] {
-  const score = (m: Move) => {
+function kingPressure(board: Board): number {
+  const bKing = findKing(board, false);
+  const wKing = findKing(board, true);
+  let s = 0;
+  if (bKing && isSquareAttacked(board, bKing[0], bKing[1], true)) s -= 380;
+  if (wKing && isSquareAttacked(board, wKing[0], wKing[1], false)) s += 380;
+  return s;
+}
+
+/** Piece-square tables (white-oriented: row 0 = far side / promotion for white pawns in classic tables — we map from board coords). */
+const PST_P: number[][] = [
+  [0, 0, 0, 0, 0, 0, 0, 0],
+  [50, 50, 50, 50, 50, 50, 50, 50],
+  [10, 10, 20, 30, 30, 20, 10, 10],
+  [5, 5, 10, 25, 25, 10, 5, 5],
+  [0, 0, 0, 20, 20, 0, 0, 0],
+  [5, -5, -10, 0, 0, -10, -5, 5],
+  [5, 10, 10, -20, -20, 10, 10, 5],
+  [0, 0, 0, 0, 0, 0, 0, 0],
+];
+
+const PST_N: number[][] = [
+  [-50, -40, -30, -30, -30, -30, -40, -50],
+  [-40, -20, 0, 0, 0, 0, -20, -40],
+  [-30, 0, 10, 15, 15, 10, 0, -30],
+  [-30, 5, 15, 20, 20, 15, 5, -30],
+  [-30, 0, 15, 20, 20, 15, 0, -30],
+  [-30, 5, 10, 15, 15, 10, 5, -30],
+  [-40, -20, 0, 5, 5, 0, -20, -40],
+  [-50, -40, -30, -30, -30, -30, -40, -50],
+];
+
+const PST_B: number[][] = [
+  [-20, -10, -10, -10, -10, -10, -10, -20],
+  [-10, 0, 0, 0, 0, 0, 0, -10],
+  [-10, 0, 5, 10, 10, 5, 0, -10],
+  [-10, 5, 5, 10, 10, 5, 5, -10],
+  [-10, 0, 10, 10, 10, 10, 0, -10],
+  [-10, 10, 10, 10, 10, 10, 10, -10],
+  [-10, 5, 0, 0, 0, 0, 5, -10],
+  [-20, -10, -10, -10, -10, -10, -10, -20],
+];
+
+const PST_R: number[][] = [
+  [0, 0, 0, 0, 0, 0, 0, 0],
+  [5, 10, 10, 10, 10, 10, 10, 5],
+  [-5, 0, 0, 0, 0, 0, 0, -5],
+  [-5, 0, 0, 0, 0, 0, 0, -5],
+  [-5, 0, 0, 0, 0, 0, 0, -5],
+  [-5, 0, 0, 0, 0, 0, 0, -5],
+  [-5, 0, 0, 0, 0, 0, 0, -5],
+  [0, 0, 0, 5, 5, 0, 0, 0],
+];
+
+const PST_Q: number[][] = [
+  [-20, -10, -10, -5, -5, -10, -10, -20],
+  [-10, 0, 0, 0, 0, 0, 0, -10],
+  [-10, 0, 5, 5, 5, 5, 0, -10],
+  [-5, 0, 5, 5, 5, 5, 0, -5],
+  [0, 0, 5, 5, 5, 5, 0, -5],
+  [-10, 5, 5, 5, 5, 5, 0, -10],
+  [-10, 0, 5, 0, 0, 0, 0, -10],
+  [-20, -10, -10, -5, -5, -10, -10, -20],
+];
+
+const PST_K_MG: number[][] = [
+  [-30, -40, -40, -50, -50, -40, -40, -30],
+  [-30, -40, -40, -50, -50, -40, -40, -30],
+  [-30, -40, -40, -50, -50, -40, -40, -30],
+  [-30, -40, -40, -50, -50, -40, -40, -30],
+  [-20, -30, -30, -40, -40, -30, -30, -20],
+  [-10, -20, -20, -20, -20, -20, -20, -10],
+  [20, 20, 0, 0, 0, 0, 20, 20],
+  [20, 30, 10, 0, 0, 10, 30, 20],
+];
+
+function pstLookup(
+  piece: Piece,
+  r: number,
+  c: number,
+  whitePiece: boolean
+): number {
+  const t = piece.toLowerCase();
+  const row = whitePiece ? 7 - r : r;
+  const col = whitePiece ? c : 7 - c;
+  let tab: number[][];
+  switch (t) {
+    case 'p':
+      tab = PST_P;
+      break;
+    case 'n':
+      tab = PST_N;
+      break;
+    case 'b':
+      tab = PST_B;
+      break;
+    case 'r':
+      tab = PST_R;
+      break;
+    case 'q':
+      tab = PST_Q;
+      break;
+    case 'k':
+      tab = PST_K_MG;
+      break;
+    default:
+      return 0;
+  }
+  const v = tab[row]?.[col] ?? 0;
+  return whitePiece ? -v : v;
+}
+
+function evaluatePST(board: Board): number {
+  let s = 0;
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const p = board[r][c];
+      if (!p || p.toLowerCase() === 'k') continue;
+      const w = isWhite(p);
+      const pst = pstLookup(p, r, c, w);
+      s += w ? -pst : pst;
+    }
+  }
+  return s;
+}
+
+function kingPST(board: Board): number {
+  let s = 0;
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const p = board[r][c];
+      if (!p || p.toLowerCase() !== 'k') continue;
+      const w = isWhite(p);
+      const pst = pstLookup(p, r, c, w);
+      s += w ? -pst : pst;
+    }
+  }
+  return s;
+}
+
+/** Extended king safety: attacks on adjacent squares + pawn shield. */
+function kingSafetyHard(board: Board): number {
+  let s = kingPressure(board);
+  const bKing = findKing(board, false);
+  const wKing = findKing(board, true);
+
+  const shield = (kr: number, kc: number, forWhite: boolean) => {
+    let bonus = 0;
+    const dir = forWhite ? 1 : -1;
+    for (let dc = -1; dc <= 1; dc++) {
+      const r = kr + dir;
+      const c = kc + dc;
+      if (r >= 0 && r < 8 && c >= 0 && c < 8) {
+        const p = board[r][c];
+        if (p && (forWhite ? p === 'P' : p === 'p')) bonus += 18;
+      }
+    }
+    return bonus;
+  };
+
+  const attackRing = (kr: number, kc: number, attackedByWhite: boolean) => {
+    let n = 0;
+    for (let dr = -1; dr <= 1; dr++)
+      for (let dc = -1; dc <= 1; dc++) {
+        if (dr === 0 && dc === 0) continue;
+        const r = kr + dr;
+        const c = kc + dc;
+        if (r >= 0 && r < 8 && c >= 0 && c < 8 && isSquareAttacked(board, r, c, attackedByWhite))
+          n += 1;
+      }
+    return n;
+  };
+
+  if (bKing) {
+    s -= attackRing(bKing[0], bKing[1], true) * 22;
+    s += shield(bKing[0], bKing[1], false);
+  }
+  if (wKing) {
+    s += attackRing(wKing[0], wKing[1], false) * 22;
+    s -= shield(wKing[0], wKing[1], true);
+  }
+  return s;
+}
+
+/** Medium leaf: material + basic check pressure on kings. */
+function evaluateMedium(board: Board): number {
+  return evaluateMaterial(board) + kingPressure(board);
+}
+
+/** Hard leaf: material + PST + king placement + extended safety. */
+function evaluateHard(board: Board): number {
+  return (
+    evaluateMaterial(board) +
+    evaluatePST(board) +
+    kingPST(board) +
+    kingSafetyHard(board)
+  );
+}
+
+function sortMovesCaptureFirst(board: Board, moves: ChessMove[]): ChessMove[] {
+  const score = (m: ChessMove) => {
+    const target = board[m.tr][m.tc];
+    const cap = target ? pieceVal(target) : 0;
+    const self = pieceVal(board[m.fr][m.fc]!);
+    return cap * 100 - self;
+  };
+  return [...moves].sort((a, b) => score(b) - score(a));
+}
+
+function sortMovesMVVLVA(board: Board, moves: ChessMove[]): ChessMove[] {
+  const score = (m: ChessMove) => {
     const target = board[m.tr][m.tc];
     const cap = target ? pieceVal(target) : 0;
     const self = pieceVal(board[m.fr][m.fc]!);
@@ -232,7 +439,9 @@ function minimax(
   depth: number,
   maximizingForBlack: boolean,
   alpha: number,
-  beta: number
+  beta: number,
+  leafEval: (b: Board) => number,
+  orderMoves: (b: Board, m: ChessMove[]) => ChessMove[]
 ): number {
   const forBlack = maximizingForBlack;
   const sideToMoveIsWhite = !forBlack;
@@ -245,15 +454,15 @@ function minimax(
     return 0;
   }
 
-  if (depth === 0) return evaluate(board);
+  if (depth === 0) return leafEval(board);
 
-  const ordered = sortMoves(board, moves);
+  const ordered = orderMoves(board, moves);
 
   if (forBlack) {
     let best = -Infinity;
     for (const m of ordered) {
       const nb = applyMove(board, m);
-      const sc = minimax(nb, depth - 1, false, alpha, beta);
+      const sc = minimax(nb, depth - 1, false, alpha, beta, leafEval, orderMoves);
       best = Math.max(best, sc);
       alpha = Math.max(alpha, best);
       if (beta <= alpha) break;
@@ -263,7 +472,7 @@ function minimax(
   let best = Infinity;
   for (const m of ordered) {
     const nb = applyMove(board, m);
-    const sc = minimax(nb, depth - 1, true, alpha, beta);
+    const sc = minimax(nb, depth - 1, true, alpha, beta, leafEval, orderMoves);
     best = Math.min(best, sc);
     beta = Math.min(beta, best);
     if (beta <= alpha) break;
@@ -271,15 +480,20 @@ function minimax(
   return best;
 }
 
-export function findBestMove(board: Board, depth: number): Move | null {
+function findBestMoveWithEval(
+  board: Board,
+  depth: number,
+  leafEval: (b: Board) => number,
+  orderMoves: (b: Board, m: ChessMove[]) => ChessMove[]
+): ChessMove | null {
   const moves = getAllLegalMoves(board, true);
   if (moves.length === 0) return null;
-  const ordered = sortMoves(board, moves);
-  let best: Move = ordered[0]!;
+  const ordered = orderMoves(board, moves);
+  let best: ChessMove = ordered[0]!;
   let bestScore = -Infinity;
   for (const m of ordered) {
     const nb = applyMove(board, m);
-    const sc = minimax(nb, depth - 1, false, -Infinity, Infinity);
+    const sc = minimax(nb, depth - 1, false, -Infinity, Infinity, leafEval, orderMoves);
     if (sc > bestScore) {
       bestScore = sc;
       best = m;
@@ -288,8 +502,22 @@ export function findBestMove(board: Board, depth: number): Move | null {
   return best;
 }
 
-export function randomBlackMove(board: Board): Move | null {
+export function findBestMoveMedium(board: Board, depth = 2): ChessMove | null {
+  return findBestMoveWithEval(board, depth, evaluateMedium, sortMovesCaptureFirst);
+}
+
+export function findBestMoveHard(board: Board, depth = 4): ChessMove | null {
+  return findBestMoveWithEval(board, depth, evaluateHard, sortMovesMVVLVA);
+}
+
+export function randomBlackMove(board: Board): ChessMove | null {
   const moves = getAllLegalMoves(board, true);
   if (moves.length === 0) return null;
   return moves[Math.floor(Math.random() * moves.length)]!;
+}
+
+export function pickBlackMove(board: Board, mode: AiDifficulty): ChessMove | null {
+  if (mode === 'easy') return randomBlackMove(board);
+  if (mode === 'medium') return findBestMoveMedium(board, 2);
+  return findBestMoveHard(board, 4);
 }

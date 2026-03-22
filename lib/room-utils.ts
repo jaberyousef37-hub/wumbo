@@ -16,4 +16,7 @@ export const GAME_NAMES: Record<string, string> = {
   uno: 'UNO',
   trivia: 'Trivia',
   shell_game: 'Shell Game',
+  shell: 'Shell Game',
+  bs: 'BS',
+  snake: 'Snake',
 };

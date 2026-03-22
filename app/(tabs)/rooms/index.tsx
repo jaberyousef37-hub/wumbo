@@ -1,7 +1,7 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   FadeIn,
   useAnimatedStyle,
@@ -14,17 +14,34 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
 import { ThemedText } from '@/components/themed-text';
-import { AppColors, Colors } from '@/constants/theme';
+import { AppColors } from '@/constants/theme';
 import { CARD_GAP, SECTION_GAP, Spacing } from '@/constants/spacing';
-import { ICON_SIZE_CARD } from '@/constants/typography';
 
-type GameCategory = 'all' | 'friends' | 'private';
+const BG = AppColors.background;
+const ACCENT = AppColors.tint;
 
-const OPEN_ROOMS = [
+type GameIconName = keyof typeof MaterialIcons.glyphMap;
+
+type RoomRow = {
+  id: string;
+  game: string;
+  gameId: string;
+  gameIcon: GameIconName;
+  code: string;
+  players: number;
+  maxPlayers: number;
+  friends: boolean;
+  isPrivate: boolean;
+  hostName: string;
+  hostInitials: string;
+};
+
+const OPEN_ROOMS: RoomRow[] = [
   {
     id: 'r1',
     game: 'UNO',
     gameId: 'uno',
+    gameIcon: 'style',
     code: '4832',
     players: 3,
     maxPlayers: 6,
@@ -37,6 +54,7 @@ const OPEN_ROOMS = [
     id: 'r2',
     game: 'BS',
     gameId: 'bs',
+    gameIcon: 'casino',
     code: '9174',
     players: 4,
     maxPlayers: 6,
@@ -49,6 +67,7 @@ const OPEN_ROOMS = [
     id: 'r3',
     game: 'Chess',
     gameId: 'chess',
+    gameIcon: 'emoji-events',
     code: '1209',
     players: 1,
     maxPlayers: 2,
@@ -61,6 +80,7 @@ const OPEN_ROOMS = [
     id: 'r4',
     game: 'Tic Tac Toe',
     gameId: 'tictactoe',
+    gameIcon: 'grid-3x3',
     code: '5521',
     players: 2,
     maxPlayers: 2,
@@ -73,6 +93,7 @@ const OPEN_ROOMS = [
     id: 'r5',
     game: 'Trivia',
     gameId: 'trivia',
+    gameIcon: 'quiz',
     code: '8890',
     players: 5,
     maxPlayers: 8,
@@ -83,88 +104,63 @@ const OPEN_ROOMS = [
   },
 ];
 
-const PLAYERS_ONLINE = 127;
+const LIVE_PLAYER_COUNT = 127;
 
-const CATEGORIES: { id: GameCategory; label: string }[] = [
+type RoomFilter = 'all' | 'active' | 'friends';
+
+const FILTERS: { id: RoomFilter; label: string }[] = [
   { id: 'all', label: 'All' },
+  { id: 'active', label: 'Active' },
   { id: 'friends', label: 'Friends' },
-  { id: 'private', label: 'Private' },
 ];
 
 function PulsingDot() {
   const opacity = useSharedValue(1);
   useEffect(() => {
     opacity.value = withRepeat(
-      withSequence(withTiming(0.4, { duration: 600 }), withTiming(1, { duration: 600 })),
+      withSequence(withTiming(0.35, { duration: 650 }), withTiming(1, { duration: 650 })),
       -1,
-      true
+      true,
     );
   }, [opacity]);
   const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
   return <Animated.View style={[styles.pulsingDot, animatedStyle]} />;
 }
 
-function filterRooms(rooms: typeof OPEN_ROOMS, category: GameCategory) {
-  if (category === 'all') return rooms;
-  if (category === 'friends') return rooms.filter((r) => r.friends);
-  return rooms.filter((r) => r.isPrivate);
+function filterRooms(rooms: RoomRow[], f: RoomFilter): RoomRow[] {
+  if (f === 'all') return rooms;
+  if (f === 'friends') return rooms.filter((r) => r.friends);
+  return rooms.filter((r) => r.players < r.maxPlayers);
 }
-
-const palette = Colors.dark;
-const ACCENT = AppColors.tint;
 
 export default function RoomsScreen() {
   const router = useRouter();
-  const [category, setCategory] = useState<GameCategory>('all');
-  const filteredRooms = filterRooms(OPEN_ROOMS, category);
+  const [filter, setFilter] = useState<RoomFilter>('all');
+  const filteredRooms = useMemo(() => filterRooms(OPEN_ROOMS, filter), [filter]);
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top']}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <Animated.View entering={FadeIn.duration(400)} style={styles.container}>
-        <View
-          style={[
-            styles.hero,
-            {
-              backgroundColor: palette.card,
-              borderBottomWidth: 1,
-              borderBottomColor: palette.cardBorder,
-            },
-          ]}
-        >
-          <ThemedText type="title" style={styles.heroTitle}>
-            Active rooms
-          </ThemedText>
-          <ThemedText type="body" style={styles.heroSubtitle}>
-            Open lobbies with space — join in one tap.
-          </ThemedText>
-          <View style={styles.playersBadge}>
-            <PulsingDot />
-            <ThemedText type="caption" style={styles.playersText}>
-              {PLAYERS_ONLINE} online
-            </ThemedText>
-          </View>
+        <View style={styles.liveRow}>
+          <PulsingDot />
+          <Text style={styles.liveText}>
+            <Text style={styles.liveBold}>{LIVE_PLAYER_COUNT.toLocaleString()}</Text> players live
+          </Text>
         </View>
 
-        <View style={styles.segmentOuter}>
-          <View style={[styles.segment, { backgroundColor: palette.card, borderColor: palette.cardBorder }]}>
-            {CATEGORIES.map((cat) => {
-              const active = category === cat.id;
-              return (
-                <Pressable
-                  key={cat.id}
-                  onPress={() => setCategory(cat.id)}
-                  style={[styles.segmentItem, active && { backgroundColor: ACCENT }]}
-                >
-                  <ThemedText
-                    type="caption"
-                    style={[styles.segmentLabel, active && { color: '#fff', fontWeight: '700' }]}
-                  >
-                    {cat.label}
-                  </ThemedText>
-                </Pressable>
-              );
-            })}
-          </View>
+        <View style={styles.filterBar}>
+          {FILTERS.map((item) => {
+            const on = filter === item.id;
+            return (
+              <Pressable
+                key={item.id}
+                onPress={() => setFilter(item.id)}
+                style={[styles.filterChip, on && styles.filterChipOn]}
+              >
+                <Text style={[styles.filterChipText, on && styles.filterChipTextOn]}>{item.label}</Text>
+              </Pressable>
+            );
+          })}
         </View>
 
         <ScrollView
@@ -172,162 +168,220 @@ export default function RoomsScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <ThemedText type="section" style={styles.listTitle}>
-            Playing now
-          </ThemedText>
-          {filteredRooms.map((room) => (
-            <View
-              key={room.id}
-              style={[styles.roomCard, { backgroundColor: palette.card, borderColor: palette.cardBorder }]}
-            >
-              <View style={styles.roomRow}>
-                <View style={styles.roomMain}>
-                  <ThemedText type="section" numberOfLines={1}>
-                    {room.game}
-                  </ThemedText>
-                  <View style={styles.capacityRow}>
-                    <ThemedText type="title" style={styles.capacityNums}>
-                      {room.players}/{room.maxPlayers}
-                    </ThemedText>
-                    <ThemedText type="caption" style={{ color: AppColors.muted }}>
-                      players
-                    </ThemedText>
+          {filteredRooms.length === 0 ? (
+            <View style={styles.empty}>
+              <MaterialIcons name="groups" size={48} color={AppColors.muted} />
+              <Text style={styles.emptyTitle}>No active rooms — be the first!</Text>
+              <ThemedText type="caption" style={styles.emptySub}>
+                Host a game and share the code with friends.
+              </ThemedText>
+            </View>
+          ) : (
+            filteredRooms.map((room) => {
+              const pct = Math.min(100, (room.players / room.maxPlayers) * 100);
+              return (
+                <View key={room.id} style={styles.roomCard}>
+                  <View style={styles.roomTop}>
+                    <View style={styles.gameIconWrap}>
+                      <MaterialIcons name={room.gameIcon} size={28} color={ACCENT} />
+                    </View>
+                    <View style={styles.roomHeadText}>
+                      <Text style={styles.gameTitle}>{room.game}</Text>
+                      <View style={styles.hostRow}>
+                        <Avatar initials={room.hostInitials} size="small" />
+                        <Text style={styles.hostName} numberOfLines={1}>
+                          {room.hostName}
+                        </Text>
+                      </View>
+                    </View>
+                    <Pressable
+                      onPress={() =>
+                        router.push({
+                          pathname: '/(tabs)/play/join-room',
+                          params: { code: room.code },
+                        })
+                      }
+                      style={({ pressed }) => [styles.joinBtn, pressed && styles.pressed]}
+                    >
+                      <Text style={styles.joinBtnText}>Join</Text>
+                    </Pressable>
                   </View>
-                  <View style={styles.hostRow}>
-                    <Avatar initials={room.hostInitials} size="small" />
-                    <ThemedText type="caption" style={{ color: AppColors.muted }} numberOfLines={1}>
-                      Host · {room.hostName}
-                    </ThemedText>
+
+                  <View style={styles.progressBlock}>
+                    <View style={styles.progressLabels}>
+                      <Text style={styles.progressLabel}>Players</Text>
+                      <Text style={styles.progressNums}>
+                        {room.players}/{room.maxPlayers}
+                      </Text>
+                    </View>
+                    <View style={styles.progressTrack}>
+                      <View style={[styles.progressFill, { width: `${pct}%` }]} />
+                    </View>
                   </View>
+
                   <View style={styles.codeRow}>
-                    <ThemedText type="caption" style={{ color: AppColors.muted }}>
-                      Code{' '}
-                    </ThemedText>
-                    <ThemedText type="caption" style={{ color: AppColors.text, fontWeight: '700' }}>
-                      {room.code}
-                    </ThemedText>
+                    <Text style={styles.codeMuted}>Room code </Text>
+                    <Text style={styles.codeValue}>{room.code}</Text>
                   </View>
                 </View>
-                <Pressable
-                  onPress={() =>
-                    router.push({
-                      pathname: '/(tabs)/play/join-room',
-                      params: { code: room.code },
-                    })
-                  }
-                  style={({ pressed }) => [
-                    styles.joinBtn,
-                    { backgroundColor: ACCENT },
-                    pressed && { opacity: 0.9 },
-                  ]}
-                >
-                  <ThemedText type="caption" style={styles.joinBtnText}>
-                    Join
-                  </ThemedText>
-                </Pressable>
-              </View>
-            </View>
-          ))}
+              );
+            })
+          )}
+        </ScrollView>
 
+        <View style={styles.footer}>
           <Pressable
             onPress={() => router.push('/(tabs)/play/create-room')}
-            style={({ pressed }) => [styles.createSmall, pressed && { opacity: 0.85 }]}
+            style={({ pressed }) => [styles.createFull, pressed && styles.pressed]}
           >
-            <MaterialIcons name="add-circle-outline" size={ICON_SIZE_CARD} color={ACCENT} />
-            <ThemedText type="caption" style={{ color: ACCENT, fontWeight: '600' }}>
-              Create room
-            </ThemedText>
+            <MaterialIcons name="add" size={22} color="#fff" />
+            <Text style={styles.createFullText}>Create Room</Text>
           </Pressable>
-        </ScrollView>
+        </View>
       </Animated.View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
+  safe: { flex: 1, backgroundColor: BG },
   container: { flex: 1 },
-  hero: {
+  liveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     paddingHorizontal: Spacing.sm,
     paddingTop: Spacing.sm,
-    paddingBottom: SECTION_GAP / 2,
-    justifyContent: 'center',
-  },
-  heroTitle: { marginBottom: Spacing.xs, fontWeight: '800' },
-  heroSubtitle: { color: AppColors.muted, marginBottom: Spacing.sm },
-  playersBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    paddingVertical: 6,
-    paddingHorizontal: Spacing.sm,
-    borderRadius: 12,
-    gap: Spacing.xs,
-    backgroundColor: 'rgba(124, 58, 237, 0.15)',
+    paddingBottom: Spacing.xs,
   },
   pulsingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: AppColors.success,
+    shadowColor: AppColors.success,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
   },
-  playersText: { fontWeight: '700', color: AppColors.text },
-  segmentOuter: {
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.sm,
-  },
-  segment: {
+  liveText: { color: AppColors.muted, fontSize: 15, fontWeight: '600' },
+  liveBold: { color: AppColors.text, fontWeight: '800' },
+  filterBar: {
     flexDirection: 'row',
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    paddingBottom: Spacing.sm,
     gap: Spacing.xs,
   },
-  segmentItem: {
-    flex: 1,
-    height: 40,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+  filterChip: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: AppColors.card,
+    borderWidth: 1,
+    borderColor: AppColors.cardBorder,
   },
-  segmentLabel: { color: AppColors.muted },
+  filterChipOn: {
+    backgroundColor: 'rgba(124, 58, 237, 0.25)',
+    borderColor: ACCENT,
+  },
+  filterChipText: { color: AppColors.muted, fontWeight: '700', fontSize: 14 },
+  filterChipTextOn: { color: AppColors.text },
   scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: Spacing.sm,
     paddingBottom: Spacing.lg,
     gap: CARD_GAP,
   },
-  listTitle: { marginBottom: 4, fontWeight: '700' },
   roomCard: {
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
-    padding: Spacing.sm,
+    borderColor: AppColors.cardBorder,
+    backgroundColor: AppColors.card,
+    padding: Spacing.md,
+    gap: Spacing.sm,
   },
-  roomRow: {
+  roomTop: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
   },
-  roomMain: { flex: 1, minWidth: 0, gap: Spacing.xs },
-  capacityRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
-  capacityNums: { fontWeight: '800', color: AppColors.tint },
-  hostRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
-  codeRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' },
-  joinBtn: {
+  gameIconWrap: {
+    width: 48,
     height: 48,
-    paddingHorizontal: Spacing.md,
-    borderRadius: 24,
+    borderRadius: 14,
+    backgroundColor: 'rgba(124, 58, 237, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 88,
+    borderWidth: 1,
+    borderColor: 'rgba(124, 58, 237, 0.3)',
   },
-  joinBtnText: { color: '#fff', fontWeight: '800' },
-  createSmall: {
+  roomHeadText: { flex: 1, minWidth: 0, gap: 6 },
+  gameTitle: { color: AppColors.text, fontSize: 17, fontWeight: '800' },
+  hostRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  hostName: { color: AppColors.muted, fontSize: 13, fontWeight: '600', flex: 1 },
+  joinBtn: {
+    backgroundColor: ACCENT,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    minWidth: 76,
+    alignItems: 'center',
+  },
+  joinBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+  progressBlock: { gap: 6 },
+  progressLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  progressLabel: { color: AppColors.muted, fontSize: 12, fontWeight: '600' },
+  progressNums: { color: AppColors.text, fontSize: 13, fontWeight: '800' },
+  progressTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 4,
+    backgroundColor: ACCENT,
+  },
+  codeRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
+  codeMuted: { color: AppColors.muted, fontSize: 13 },
+  codeValue: { color: AppColors.text, fontSize: 14, fontWeight: '800', letterSpacing: 1 },
+  empty: {
+    alignItems: 'center',
+    paddingVertical: Spacing.lg + Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  emptyTitle: {
+    color: AppColors.text,
+    fontSize: 18,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginTop: Spacing.sm,
+  },
+  emptySub: { color: AppColors.muted, textAlign: 'center', lineHeight: 20 },
+  footer: {
+    paddingHorizontal: Spacing.sm,
+    paddingTop: Spacing.xs,
+    paddingBottom: Spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: AppColors.cardBorder,
+    backgroundColor: BG,
+  },
+  createFull: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: Spacing.xs,
-    marginTop: Spacing.sm,
-    paddingVertical: Spacing.sm,
+    gap: 8,
+    backgroundColor: ACCENT,
+    paddingVertical: 16,
+    borderRadius: 14,
+    width: '100%',
   },
+  createFullText: { color: '#fff', fontWeight: '800', fontSize: 17 },
+  pressed: { opacity: 0.9 },
 });

@@ -23,7 +23,7 @@ export default function ProfileSetupScreen() {
     if (!trimmedName || !trimmedUsername) return;
     const formattedUsername = trimmedUsername.startsWith('@') ? trimmedUsername : `@${trimmedUsername}`;
     setProfile(trimmedName, formattedUsername);
-    router.replace('/(tabs)/chat');
+    router.replace('/(tabs)/home');
   };
 
   const isValid = name.trim().length > 0 && username.trim().length > 0;

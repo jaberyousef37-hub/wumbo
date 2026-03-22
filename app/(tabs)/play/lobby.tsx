@@ -129,6 +129,12 @@ export default function LobbyScreen() {
       router.replace('/(tabs)/play/uno' as Href);
     } else if (gameType === 'trivia') {
       router.replace('/(tabs)/play/trivia' as Href);
+    } else if (gameType === 'bs') {
+      router.replace('/(tabs)/play/bs' as Href);
+    } else if (gameType === 'shell') {
+      router.replace('/(tabs)/play/shell-game' as Href);
+    } else if (gameType === 'snake') {
+      router.replace('/(tabs)/play/snake' as Href);
     } else {
       router.replace('/(tabs)/play/tictactoe' as Href);
     }

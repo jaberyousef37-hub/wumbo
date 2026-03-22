@@ -22,6 +22,7 @@ import AnimatedRN, {
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { HowToPlayButton } from '@/components/how-to-play-button';
 import { ThemedText } from '@/components/themed-text';
 import { AppColors } from '@/constants/theme';
 import { Typography } from '@/constants/typography';
@@ -646,9 +647,14 @@ export default function ShellGamePlayScreen() {
         <Pressable onPress={handleBack} style={styles.backBtn} hitSlop={8}>
           <MaterialIcons name="arrow-back" size={24} color="#fff" />
         </Pressable>
-        <ThemedText type="defaultSemiBold" style={styles.scoreText} darkColor="#fff">
+        <ThemedText
+          type="defaultSemiBold"
+          style={[styles.scoreText, { flex: 1, textAlign: 'center' }]}
+          darkColor="#fff"
+        >
           Score: {score}
         </ThemedText>
+        <HowToPlayButton gameId="shell" tint="#fff" />
       </View>
 
       <View style={styles.container}>

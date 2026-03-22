@@ -9,6 +9,7 @@ import { Spacing } from '@/constants/spacing';
 import { ICON_SIZE_NAV } from '@/constants/typography';
 
 const TAB_CONFIG: Record<string, { icon: keyof typeof MaterialIcons.glyphMap; label: string }> = {
+  home: { icon: 'home', label: 'Home' },
   chat: { icon: 'chat', label: 'Chat' },
   play: { icon: 'sports-esports', label: 'Play' },
   rooms: { icon: 'groups', label: 'Rooms' },

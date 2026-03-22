@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { HowToPlayButton } from '@/components/how-to-play-button';
 import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/contexts/theme-context';
 import { AppColors, Colors } from '@/constants/theme';
@@ -14,6 +15,7 @@ import {
   TRIVIA_CATEGORY_LABELS,
   type BankTriviaQuestion,
 } from '@/lib/trivia-bank';
+import { recordRecentGame } from '@/lib/recent-games';
 
 type Question = {
   id: string;
@@ -77,6 +79,7 @@ export default function TriviaScreen() {
   const [streak, setStreak] = useState(0);
   const [roundQuestions, setRoundQuestions] = useState<Question[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const triviaRecordedRef = useRef(false);
 
   const questions = roundQuestions;
   const timerSeconds = difficulty ? DIFFICULTY_CONFIG[difficulty].seconds : 15;
@@ -84,6 +87,23 @@ export default function TriviaScreen() {
 
   const questionsRef = useRef(questions);
   questionsRef.current = questions;
+
+  useEffect(() => {
+    if (!gameOver || difficulty === null) {
+      triviaRecordedRef.current = false;
+      return;
+    }
+    if (triviaRecordedRef.current) return;
+    triviaRecordedRef.current = true;
+    const maxPossible = questions.length * BASE_POINTS * 2;
+    const pct =
+      maxPossible > 0 ? Math.min(100, Math.round((score / maxPossible) * 100)) : 0;
+    void recordRecentGame({
+      gameName: 'Trivia',
+      result: pct >= 50 ? 'win' : 'loss',
+      score: `${score} pts (${pct}%)`,
+    });
+  }, [gameOver, difficulty, score, questions.length]);
 
   const finishQuestionTransition = useCallback(() => {
     setSelectedAnswer(null);
@@ -208,6 +228,7 @@ export default function TriviaScreen() {
             <ThemedText type="defaultSemiBold" style={styles.title} darkColor="#fff">
               Trivia
             </ThemedText>
+            <HowToPlayButton gameId="trivia" tint="#fff" />
           </LinearGradient>
           <ThemedText type="title" style={[styles.pickTitle, { color: palette.text }]}>
             Choose difficulty
@@ -268,6 +289,7 @@ export default function TriviaScreen() {
             <ThemedText type="defaultSemiBold" style={styles.title} darkColor="#fff">
               Trivia
             </ThemedText>
+            <HowToPlayButton gameId="trivia" tint="#fff" />
           </LinearGradient>
           <View style={styles.finalScore}>
             <View style={[styles.badge, styles.badgeLarge, { backgroundColor: cfg.badgeBg }]}>
@@ -328,6 +350,7 @@ export default function TriviaScreen() {
             Trivia
           </ThemedText>
           <View style={styles.headerRight}>
+            <HowToPlayButton gameId="trivia" tint="#fff" />
             <View style={[styles.badge, styles.badgeSmall, { backgroundColor: cfg.badgeBg }]}>
               <Text style={[styles.badgeLabelSmall, { color: cfg.badgeText }]}>{cfg.label}</Text>
             </View>

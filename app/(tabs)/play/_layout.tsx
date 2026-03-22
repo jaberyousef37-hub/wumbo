@@ -12,10 +12,13 @@ export default function PlayLayout() {
       <Stack.Screen name="trivia" />
       <Stack.Screen name="chess" />
       <Stack.Screen name="uno" />
+      <Stack.Screen name="bs" />
       <Stack.Screen name="snake" />
       <Stack.Screen name="shell-game" />
       <Stack.Screen name="shell-game-join" />
       <Stack.Screen name="shell-game-play" />
+      <Stack.Screen name="snakes-ladders" />
+      <Stack.Screen name="would-you-rather" />
     </Stack>
   );
 }

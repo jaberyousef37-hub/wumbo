@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { HowToPlayButton } from '@/components/how-to-play-button';
 import { ThemedText } from '@/components/themed-text';
 import { AppColors } from '@/constants/theme';
 import { Spacing } from '@/constants/spacing';
@@ -78,9 +79,10 @@ export default function ShellGameScreen() {
           <Pressable onPress={handleBack} style={styles.backBtn} hitSlop={12}>
             <MaterialIcons name="arrow-back" size={24} color="#fff" />
           </Pressable>
-          <ThemedText type="defaultSemiBold" style={styles.title} darkColor="#fff">
+          <ThemedText type="defaultSemiBold" style={[styles.title, { flex: 1 }]} darkColor="#fff">
             Shell Game
           </ThemedText>
+          <HowToPlayButton gameId="shell" tint="#fff" />
         </View>
 
         <View style={styles.content}>

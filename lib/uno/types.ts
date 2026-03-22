@@ -11,19 +11,26 @@ export type UnoCard = {
   value: number | null;
 };
 
-export type UnoPlayer = 'player' | 'ai';
+/** 0 = You, 1 = Alex (AI), 2 = Sam (AI) */
+export type UnoSeat = 0 | 1 | 2;
+
+export const UNO_NAMES: readonly [string, string, string] = ['You', 'Alex', 'Sam'];
+
+export type UnoDifficulty = 'easy' | 'medium' | 'hard';
 
 export type UnoGameState = {
   deck: UnoCard[];
   discard: UnoCard[];
   /** Effective color to match (after wilds) */
   activeColor: UnoSuit;
-  playerHand: UnoCard[];
-  aiHand: UnoCard[];
-  currentTurn: UnoPlayer;
-  winner: UnoPlayer | null;
-  /** Player tapped UNO while holding exactly one card */
+  hands: [UnoCard[], UnoCard[], UnoCard[]];
+  currentTurn: UnoSeat;
+  /** +1: 0→1→2→0, -1: reverse */
+  direction: 1 | -1;
+  winner: UnoSeat | null;
+  /** Seat 0 tapped UNO while holding exactly one card */
   playerUnoAcknowledged: boolean;
-  /** Waiting for wild color choice */
-  wildPicker: UnoPlayer | null;
+  wildPicker: UnoSeat | null;
+  drawStack: number;
+  aiDifficulty: UnoDifficulty;
 };
