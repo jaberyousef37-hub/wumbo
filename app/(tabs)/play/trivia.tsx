@@ -6,16 +6,32 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { GameResultsSummary } from '@/components/game-results-summary';
 import { HowToPlayButton } from '@/components/how-to-play-button';
 import { ThemedText } from '@/components/themed-text';
+import type { RewardBreakdown } from '@/lib/game-rewards';
+import { useCosmetics } from '@/contexts/cosmetics-context';
 import { useTheme } from '@/contexts/theme-context';
 import { AppColors, Colors } from '@/constants/theme';
 import {
   pickQuizQuestions,
   TRIVIA_CATEGORY_LABELS,
   type BankTriviaQuestion,
+  type TriviaCategoryId,
 } from '@/lib/trivia-bank';
 import { recordRecentGame } from '@/lib/recent-games';
+
+const CATEGORY_SOLID_BG: Record<TriviaCategoryId, string> = {
+  general_knowledge: '#5B21B6',
+  sports: '#059669',
+  movies_tv: '#DB2777',
+  science_technology: '#2563EB',
+  history: '#B45309',
+  geography: '#0891B2',
+};
+
+const CARD_DARK = '#1a1a1a';
+const HEADER_BAR = '#2a2a2a';
 
 type Question = {
   id: string;
@@ -23,6 +39,7 @@ type Question = {
   options: string[];
   correctIndex: number;
   categoryLabel: string;
+  categoryId: TriviaCategoryId;
 };
 
 const QUESTIONS_PER_ROUND = 15;
@@ -34,6 +51,7 @@ function bankToScreenQuestion(q: BankTriviaQuestion): Question {
     options: [...q.options],
     correctIndex: q.correctIndex,
     categoryLabel: TRIVIA_CATEGORY_LABELS[q.category],
+    categoryId: q.category,
   };
 }
 
@@ -67,6 +85,7 @@ const BASE_POINTS = 10;
 
 export default function TriviaScreen() {
   const router = useRouter();
+  const { rewardGameEnd } = useCosmetics();
   const { isDark } = useTheme();
   const palette = isDark ? Colors.dark : Colors.light;
   const [difficulty, setDifficulty] = useState<TriviaDifficulty | null>(null);
@@ -76,6 +95,7 @@ export default function TriviaScreen() {
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [showResult, setShowResult] = useState(false);
   const [gameOver, setGameOver] = useState(false);
+  const [endRewards, setEndRewards] = useState<RewardBreakdown | null>(null);
   const [streak, setStreak] = useState(0);
   const [roundQuestions, setRoundQuestions] = useState<Question[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -91,6 +111,7 @@ export default function TriviaScreen() {
   useEffect(() => {
     if (!gameOver || difficulty === null) {
       triviaRecordedRef.current = false;
+      setEndRewards(null);
       return;
     }
     if (triviaRecordedRef.current) return;
@@ -98,12 +119,14 @@ export default function TriviaScreen() {
     const maxPossible = questions.length * BASE_POINTS * 2;
     const pct =
       maxPossible > 0 ? Math.min(100, Math.round((score / maxPossible) * 100)) : 0;
+    const outcome = pct >= 50 ? 'win' : 'loss';
+    void rewardGameEnd(outcome).then(setEndRewards);
     void recordRecentGame({
       gameName: 'Trivia',
       result: pct >= 50 ? 'win' : 'loss',
       score: `${score} pts (${pct}%)`,
     });
-  }, [gameOver, difficulty, score, questions.length]);
+  }, [gameOver, difficulty, score, questions.length, rewardGameEnd]);
 
   const finishQuestionTransition = useCallback(() => {
     setSelectedAnswer(null);
@@ -216,12 +239,7 @@ export default function TriviaScreen() {
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top']}>
         <View style={styles.container}>
-          <LinearGradient
-            colors={[palette.tint, palette.accentPink, palette.card]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.header}
-          >
+          <View style={[styles.header, { backgroundColor: HEADER_BAR }]}>
             <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
               <MaterialIcons name="arrow-back" size={24} color="#fff" />
             </Pressable>
@@ -229,7 +247,7 @@ export default function TriviaScreen() {
               Trivia
             </ThemedText>
             <HowToPlayButton gameId="trivia" tint="#fff" />
-          </LinearGradient>
+          </View>
           <ThemedText type="title" style={[styles.pickTitle, { color: palette.text }]}>
             Choose difficulty
           </ThemedText>
@@ -245,7 +263,7 @@ export default function TriviaScreen() {
                 onPress={() => startQuiz(d)}
                 style={({ pressed }) => [
                   styles.diffRow,
-                  { backgroundColor: palette.card, borderColor: palette.cardBorder },
+                  { backgroundColor: CARD_DARK, borderColor: 'rgba(255,255,255,0.08)' },
                   pressed && { opacity: 0.92 },
                 ]}
               >
@@ -277,12 +295,7 @@ export default function TriviaScreen() {
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top']}>
         <View style={styles.container}>
-          <LinearGradient
-            colors={[palette.tint, palette.accentPink, palette.card]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.header}
-          >
+          <View style={[styles.header, { backgroundColor: HEADER_BAR }]}>
             <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
               <MaterialIcons name="arrow-back" size={24} color="#fff" />
             </Pressable>
@@ -290,7 +303,7 @@ export default function TriviaScreen() {
               Trivia
             </ThemedText>
             <HowToPlayButton gameId="trivia" tint="#fff" />
-          </LinearGradient>
+          </View>
           <View style={styles.finalScore}>
             <View style={[styles.badge, styles.badgeLarge, { backgroundColor: cfg.badgeBg }]}>
               <Text style={[styles.badgeLabel, { color: cfg.badgeText }]}>{cfg.label}</Text>
@@ -301,6 +314,9 @@ export default function TriviaScreen() {
               {score} pts · {questions.length} questions
             </ThemedText>
             <ThemedText style={styles.finalPercent}>{displayPct}% of max (with streak bonus)</ThemedText>
+            {endRewards != null && endRewards.xpAdded + endRewards.coinsAdded > 0 ? (
+              <GameResultsSummary rewards={endRewards} compact />
+            ) : null}
             <Pressable onPress={handlePlayAgain} style={styles.playAgainBtn}>
               <LinearGradient
                 colors={[palette.accentPink, palette.accentYellow]}
@@ -337,12 +353,7 @@ export default function TriviaScreen() {
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top']}>
       <View style={styles.container}>
-        <LinearGradient
-          colors={[palette.tint, palette.accentPink, palette.card]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.header}
-        >
+        <View style={[styles.header, { backgroundColor: HEADER_BAR }]}>
           <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
             <MaterialIcons name="arrow-back" size={24} color="#fff" />
           </Pressable>
@@ -360,7 +371,7 @@ export default function TriviaScreen() {
               </ThemedText>
             </View>
           </View>
-        </LinearGradient>
+        </View>
 
         {streak >= 2 && (
           <ThemedText style={[styles.streakBanner, { color: palette.accentPink }]}>
@@ -387,9 +398,11 @@ export default function TriviaScreen() {
           <ThemedText style={styles.questionNum}>
             Question {currentIndex + 1} of {questions.length}
           </ThemedText>
-          <ThemedText type="caption" style={[styles.categoryPill, { color: palette.tint }]}>
-            {question.categoryLabel}
-          </ThemedText>
+          <View
+            style={[styles.categoryCard, { backgroundColor: CATEGORY_SOLID_BG[question.categoryId] }]}
+          >
+            <Text style={styles.categoryCardText}>{question.categoryLabel}</Text>
+          </View>
           <ThemedText style={styles.question}>{question.question}</ThemedText>
         </View>
 
@@ -406,7 +419,7 @@ export default function TriviaScreen() {
                 disabled={showResult}
                 style={[
                   styles.option,
-                  { backgroundColor: palette.card, borderColor: palette.cardBorder },
+                  { backgroundColor: CARD_DARK, borderColor: 'rgba(255,255,255,0.1)' },
                   showCorrect && styles.optionCorrect,
                   showWrong && styles.optionWrong,
                 ]}
@@ -488,12 +501,19 @@ const styles = StyleSheet.create({
     opacity: 0.8,
     marginBottom: 8,
   },
-  categoryPill: {
-    fontWeight: '700',
-    marginBottom: 6,
+  categoryCard: {
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  categoryCardText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 12,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
-    fontSize: 12,
   },
   question: {
     fontSize: 20,

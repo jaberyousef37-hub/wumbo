@@ -19,13 +19,16 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HowToPlayButton } from '@/components/how-to-play-button';
 import { ThemedText } from '@/components/themed-text';
 import { WinnerModal } from '@/components/winner-modal';
+import { useCosmetics } from '@/contexts/cosmetics-context';
 import { AppColors } from '@/constants/theme';
 import { Spacing } from '@/constants/spacing';
+import { TextColors, Typography } from '@/constants/typography';
+import type { RewardBreakdown } from '@/lib/game-rewards';
 import {
   applySnakeOrLadder,
   BOARD_SIZE,
@@ -37,16 +40,16 @@ import {
 
 const BG = '#12051f';
 const BOARD_PAD = 6;
-const PLAYER_COLORS = ['#F472B6', '#38BDF8', '#4ADE80', '#FBBF24'] as const;
+/** Board cells only — light / dark alternating */
+const CELL_LIGHT = '#F5F5DC';
+const CELL_DARK = '#8B7355';
+const LADDER_COLOR = '#2ECC71';
+const SNAKE_COLOR = '#E74C3C';
+/** Purple, pink, yellow, blue (max 4) */
+const PLAYER_COLORS = ['#7C3AED', '#EC4899', '#FBBF24', '#3B82F6'] as const;
 const DICE_FACE = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
 
 type Phase = 'setup' | 'play';
-
-function cellHue(row: number, col: number): string {
-  const hues = [280, 200, 140, 320, 45, 170];
-  const i = (row * 3 + col * 2) % hues.length;
-  return `hsl(${hues[i]}, 65%, ${42 + ((row + col) % 3) * 6}%)`;
-}
 
 function SegmentLine({
   x1,
@@ -115,8 +118,8 @@ function LadderGraphic({
   const len = Math.hypot(dx, dy) || 1;
   const px = (-dy / len) * 5;
   const py = (dx / len) * 5;
-  const rail = '#FDE68A';
-  const rung = '#FBBF24';
+  const rail = LADDER_COLOR;
+  const rung = LADDER_COLOR;
   const steps = Math.max(4, Math.floor(len / (cell * 0.35)));
   const rungs: { x: number; y: number; angle: number }[] = [];
   for (let i = 1; i < steps; i++) {
@@ -191,8 +194,8 @@ function SnakeGraphic({
         y1={pts[i].y}
         x2={pts[i + 1].x}
         y2={pts[i + 1].y}
-        thickness={i % 2 === 0 ? 7 : 6}
-        color={i % 2 === 0 ? '#15803D' : '#166534'}
+        thickness={6.5}
+        color={SNAKE_COLOR}
         zIndex={zIndex}
       />,
     );
@@ -202,6 +205,8 @@ function SnakeGraphic({
 
 export default function SnakesLaddersScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { rewardGameEnd } = useCosmetics();
   const { width: winW } = useWindowDimensions();
 
   const [phase, setPhase] = useState<Phase>('setup');
@@ -220,9 +225,23 @@ export default function SnakesLaddersScreen() {
   const [winVisible, setWinVisible] = useState(false);
   const [winnerIndex, setWinnerIndex] = useState(0);
   const [displayPositions, setDisplayPositions] = useState<number[]>([0, 0, 0, 0]);
+  const [endRewards, setEndRewards] = useState<RewardBreakdown | null>(null);
+  const slCoinRef = useRef(false);
 
   const positionsRef = useRef(positions);
   positionsRef.current = positions;
+
+  useEffect(() => {
+    if (!winVisible) {
+      slCoinRef.current = false;
+      setEndRewards(null);
+      return;
+    }
+    if (slCoinRef.current) return;
+    slCoinRef.current = true;
+    const outcome = winnerIndex === 0 ? 'win' : 'loss';
+    void rewardGameEnd(outcome).then(setEndRewards);
+  }, [winVisible, winnerIndex, rewardGameEnd]);
 
   const diceShake = useSharedValue(0);
   const diceShakeStyle = useAnimatedStyle(() => ({
@@ -391,21 +410,26 @@ export default function SnakesLaddersScreen() {
     !aiMask[currentPlayer];
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
+      <View style={{ flex: 1, paddingTop: insets.top }}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.backBtn, pressed && styles.pressed]}>
-          <MaterialIcons name="arrow-back" size={24} color="#E9D5FF" />
+          <MaterialIcons name="arrow-back" size={24} color={TextColors.primary} />
         </Pressable>
-        <ThemedText type="subtitle" style={styles.headerTitle}>
+        <ThemedText type="title" style={styles.headerTitle}>
           Snakes & Ladders
         </ThemedText>
-        <HowToPlayButton gameId="snakes-ladders" tint="#E9D5FF" />
+        <HowToPlayButton gameId="snakes-ladders" tint={TextColors.primary} />
       </View>
 
       {phase === 'setup' ? (
         <ScrollView contentContainerStyle={styles.setupScroll} keyboardShouldPersistTaps="handled">
-          <Text style={styles.setupHead}>Players</Text>
-          <Text style={styles.setupSub}>1–4 players. Toggle CPU for AI opponents.</Text>
+          <ThemedText type="section" style={styles.setupHead}>
+            Players
+          </ThemedText>
+          <ThemedText type="body" style={styles.setupSub}>
+            1–4 players. Toggle CPU for AI opponents.
+          </ThemedText>
           <View style={styles.countRow}>
             {[1, 2, 3, 4].map((n) => (
               <Pressable
@@ -421,7 +445,9 @@ export default function SnakesLaddersScreen() {
             <View style={styles.aiList}>
               {Array.from({ length: playerCount - 1 }, (_, i) => i + 1).map((slot) => (
                 <View key={slot} style={styles.aiRow}>
-                  <Text style={styles.aiLabel}>{slot === 1 ? 'Player 2' : slot === 2 ? 'Player 3' : 'Player 4'}</Text>
+                  <ThemedText type="cardTitle" style={styles.aiLabel}>
+                  {slot === 1 ? 'Player 2' : slot === 2 ? 'Player 3' : 'Player 4'}
+                </ThemedText>
                   <Switch
                     value={aiMask[slot]}
                     onValueChange={(v) =>
@@ -434,13 +460,17 @@ export default function SnakesLaddersScreen() {
                     trackColor={{ false: '#3f3f46', true: 'rgba(124, 58, 237, 0.55)' }}
                     thumbColor={aiMask[slot] ? '#C4B5FD' : '#71717A'}
                   />
-                  <Text style={styles.aiHint}>{aiMask[slot] ? 'CPU' : 'Human'}</Text>
+                  <ThemedText type="caption" style={styles.aiHint}>
+                    {aiMask[slot] ? 'CPU' : 'Human'}
+                  </ThemedText>
                 </View>
               ))}
             </View>
           )}
           <Pressable onPress={startFromSetup} style={({ pressed }) => [styles.startBtn, pressed && styles.pressed]}>
-            <Text style={styles.startBtnText}>Start game</Text>
+            <ThemedText type="cardTitle" style={styles.startBtnText}>
+              Start game
+            </ThemedText>
           </Pressable>
         </ScrollView>
       ) : (
@@ -450,11 +480,13 @@ export default function SnakesLaddersScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.turnBanner}>
-            <Text style={styles.turnText}>
+            <ThemedText type="section" style={styles.turnText}>
               {winVisible ? 'Game over' : `${playerLabel(currentPlayer)}’s turn`}
-            </Text>
+            </ThemedText>
             {!aiMask[currentPlayer] && !winVisible && (
-              <Text style={styles.turnHint}>Roll the dice</Text>
+              <ThemedText type="caption" style={styles.turnHint}>
+                Roll the dice
+              </ThemedText>
             )}
           </View>
 
@@ -467,6 +499,7 @@ export default function SnakesLaddersScreen() {
                     const base = rowFromBottom * 10;
                     const offset = rowFromBottom % 2 === 0 ? col : 9 - col;
                     const n = base + offset + 1;
+                    const isLightCell = (row + col) % 2 === 0;
                     return (
                       <View
                         key={`${row}-${col}`}
@@ -475,12 +508,19 @@ export default function SnakesLaddersScreen() {
                           {
                             width: cell,
                             height: cell,
-                            backgroundColor: cellHue(row, col),
-                            borderColor: 'rgba(0,0,0,0.2)',
+                            backgroundColor: isLightCell ? CELL_LIGHT : CELL_DARK,
+                            borderColor: 'rgba(0,0,0,0.18)',
                           },
                         ]}
                       >
-                        <Text style={styles.cellNum}>{n}</Text>
+                        <Text
+                          style={[
+                            styles.cellNum,
+                            isLightCell ? styles.cellNumOnLight : styles.cellNumOnDark,
+                          ]}
+                        >
+                          {n}
+                        </Text>
                       </View>
                     );
                   })}
@@ -535,11 +575,11 @@ export default function SnakesLaddersScreen() {
                       top: BOARD_PAD + row * cell + cell / 2 - Math.max(14, cell * 0.34) / 2 + oy,
                       backgroundColor: PLAYER_COLORS[pi % PLAYER_COLORS.length],
                       borderWidth: isCurrent ? 3 : 2,
-                      borderColor: isCurrent ? '#FEF08A' : 'rgba(0,0,0,0.35)',
+                      borderColor: isCurrent ? TextColors.primary : 'rgba(0,0,0,0.4)',
                       zIndex: 20 + pi,
-                      shadowColor: isCurrent ? '#FDE047' : '#000',
-                      shadowOpacity: isCurrent ? 0.55 : 0.25,
-                      shadowRadius: isCurrent ? 6 : 3,
+                      shadowColor: '#000',
+                      shadowOpacity: isCurrent ? 0.35 : 0.22,
+                      shadowRadius: isCurrent ? 5 : 3,
                     },
                   ]}
                 />
@@ -550,7 +590,9 @@ export default function SnakesLaddersScreen() {
           <View style={styles.diceRow}>
             <Animated.View style={[styles.diceBox, diceShakeStyle]}>
               <Text style={styles.diceEmoji}>{DICE_FACE[diceFace - 1]}</Text>
-              <Text style={styles.diceNum}>{diceFace}</Text>
+              <ThemedText type="cardTitle" style={styles.diceNum}>
+                {diceFace}
+              </ThemedText>
             </Animated.View>
             <Pressable
               onPress={rollDice}
@@ -560,7 +602,9 @@ export default function SnakesLaddersScreen() {
                 (!canRoll || pressed) && { opacity: canRoll ? 0.85 : 0.45 },
               ]}
             >
-              <Text style={styles.rollBtnText}>{diceRolling ? 'Rolling…' : 'Roll dice'}</Text>
+              <ThemedText type="cardTitle" style={styles.rollBtnText}>
+                {diceRolling ? 'Rolling…' : 'Roll dice'}
+              </ThemedText>
             </Pressable>
           </View>
 
@@ -568,7 +612,9 @@ export default function SnakesLaddersScreen() {
             {Array.from({ length: playerCount }, (_, i) => (
               <View key={i} style={styles.legendRow}>
                 <View style={[styles.legendDot, { backgroundColor: PLAYER_COLORS[i % PLAYER_COLORS.length] }]} />
-                <Text style={styles.legendText}>{playerLabel(i)}</Text>
+                <ThemedText type="body" style={styles.legendText}>
+                  {playerLabel(i)}
+                </ThemedText>
               </View>
             ))}
           </View>
@@ -579,8 +625,10 @@ export default function SnakesLaddersScreen() {
         visible={winVisible}
         winnerName={playerLabel(winnerIndex)}
         subtitle="First to square 100 wins!"
+        rewards={endRewards}
         onPlayAgain={resetGame}
       />
+      </View>
     </SafeAreaView>
   );
 }
@@ -595,11 +643,11 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   backBtn: { padding: 8 },
-  headerTitle: { flex: 1, color: '#E9D5FF', fontWeight: '800' },
+  headerTitle: { flex: 1 },
   pressed: { opacity: 0.88 },
   setupScroll: { padding: Spacing.md, gap: Spacing.md, paddingBottom: Spacing.lg + Spacing.md },
-  setupHead: { color: '#F5F3FF', fontSize: 22, fontWeight: '800' },
-  setupSub: { color: '#C4B5FD', fontSize: 15, lineHeight: 22 },
+  setupHead: {},
+  setupSub: { color: TextColors.secondary },
   countRow: { flexDirection: 'row', gap: 10 },
   countChip: {
     paddingVertical: 12,
@@ -613,7 +661,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(124, 58, 237, 0.55)',
     borderColor: '#C4B5FD',
   },
-  countChipText: { color: '#DDD6FE', fontWeight: '800', fontSize: 17 },
+  countChipText: { color: TextColors.primary, fontWeight: '700', fontSize: Typography.cardTitle },
   countChipTextOn: { color: '#fff' },
   aiList: { gap: Spacing.sm },
   aiRow: {
@@ -625,8 +673,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: Spacing.md,
   },
-  aiLabel: { color: '#E9D5FF', fontWeight: '700', flex: 1 },
-  aiHint: { color: '#A78BFA', fontWeight: '700', width: 52, textAlign: 'right' },
+  aiLabel: { flex: 1 },
+  aiHint: { color: TextColors.secondary, width: 52, textAlign: 'right', fontWeight: '600' },
   startBtn: {
     marginTop: Spacing.sm,
     backgroundColor: AppColors.tint,
@@ -634,18 +682,18 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
   },
-  startBtnText: { color: '#fff', fontWeight: '800', fontSize: 17 },
+  startBtnText: { color: TextColors.primary, fontWeight: '700' },
   playScroll: { alignItems: 'center', paddingBottom: Spacing.lg + Spacing.md, gap: Spacing.md },
   turnBanner: { alignItems: 'center', paddingHorizontal: Spacing.md },
-  turnText: { color: '#F5F3FF', fontSize: 18, fontWeight: '800' },
-  turnHint: { color: '#C4B5FD', fontSize: 14, marginTop: 4, fontWeight: '600' },
+  turnText: {},
+  turnHint: { color: TextColors.secondary, marginTop: 4 },
   boardOuter: {
     position: 'relative',
     borderRadius: 16,
     overflow: 'hidden',
     borderWidth: 2,
-    borderColor: 'rgba(167, 139, 250, 0.45)',
-    backgroundColor: '#1e1033',
+    borderColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: '#2A231C',
   },
   boardGrid: { position: 'absolute', zIndex: 0 },
   row: { flexDirection: 'row' },
@@ -656,13 +704,14 @@ const styles = StyleSheet.create({
     paddingTop: 2,
   },
   cellNum: {
-    color: 'rgba(255,255,255,0.88)',
-    fontSize: 9,
+    fontSize: Typography.caption,
     fontWeight: '800',
-    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowColor: 'rgba(0,0,0,0.35)',
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    textShadowRadius: 1,
   },
+  cellNumOnLight: { color: '#4A3728' },
+  cellNumOnDark: { color: 'rgba(255,255,255,0.95)' },
   segment: { position: 'absolute' },
   piece: { position: 'absolute' },
   diceRow: {
@@ -682,7 +731,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   diceEmoji: { fontSize: 28, marginBottom: 2 },
-  diceNum: { color: '#F5F3FF', fontWeight: '900', fontSize: 16 },
+  diceNum: { color: TextColors.primary, fontWeight: '700' },
   rollBtn: {
     backgroundColor: '#6D28D9',
     paddingVertical: 14,
@@ -691,9 +740,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(196, 181, 253, 0.5)',
   },
-  rollBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  rollBtnText: { color: TextColors.primary, fontWeight: '700' },
   legend: { alignSelf: 'stretch', paddingHorizontal: Spacing.lg, gap: 6, marginTop: Spacing.sm },
   legendRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   legendDot: { width: 12, height: 12, borderRadius: 6 },
-  legendText: { color: '#DDD6FE', fontWeight: '600', fontSize: 14 },
+  legendText: { color: TextColors.primary },
 });

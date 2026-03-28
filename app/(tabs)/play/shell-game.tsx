@@ -1,21 +1,25 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { InGameChat } from '@/components/in-game-chat';
 import { HowToPlayButton } from '@/components/how-to-play-button';
 import { ThemedText } from '@/components/themed-text';
-import { AppColors } from '@/constants/theme';
 import { Spacing } from '@/constants/spacing';
 import { supabase } from '@/lib/supabase';
 import { generateRoomCode, generateGuestName } from '@/lib/room-utils';
 
-const BG_DARK = AppColors.background;
-const ACCENT = AppColors.tint;
+const BG_DEEP = '#0d2818';
+const BG_CENTER = '#1a4030';
+const GOLD = '#C9A227';
+const ACCENT = GOLD;
 
 export default function ShellGameScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [creating, setCreating] = useState(false);
 
   const handleCreateRoom = async () => {
@@ -73,8 +77,15 @@ export default function ShellGameScreen() {
   const handleBack = () => router.back();
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: BG_DARK }]} edges={['top']}>
-      <View style={styles.container}>
+    <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
+      <LinearGradient
+        colors={[BG_CENTER, BG_DEEP, '#081810']}
+        locations={[0, 0.45, 1]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.header}>
           <Pressable onPress={handleBack} style={styles.backBtn} hitSlop={12}>
             <MaterialIcons name="arrow-back" size={24} color="#fff" />
@@ -82,7 +93,8 @@ export default function ShellGameScreen() {
           <ThemedText type="defaultSemiBold" style={[styles.title, { flex: 1 }]} darkColor="#fff">
             Shell Game
           </ThemedText>
-          <HowToPlayButton gameId="shell" tint="#fff" />
+          <InGameChat selfName="You" opponentName="Friend" opponentIsAi={false} />
+          <HowToPlayButton gameId="shell" tint={GOLD} />
         </View>
 
         <View style={styles.content}>
@@ -112,8 +124,11 @@ export default function ShellGameScreen() {
             </ThemedText>
           </Pressable>
 
-          <Pressable onPress={handleJoinRoom} style={[styles.joinBtn, { borderColor: `${ACCENT}88` }]}>
-            <MaterialIcons name="login" size={22} color={ACCENT} />
+          <Pressable
+            onPress={handleJoinRoom}
+            style={[styles.joinBtn, { borderColor: 'rgba(201,162,39,0.55)' }]}
+          >
+            <MaterialIcons name="login" size={22} color={GOLD} />
             <ThemedText style={[styles.joinBtnText, { color: ACCENT }]}>
               Join with Code
             </ThemedText>
@@ -125,7 +140,7 @@ export default function ShellGameScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
+  safe: { flex: 1, backgroundColor: BG_DEEP },
   container: {
     flex: 1,
     paddingHorizontal: Spacing.md,

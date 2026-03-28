@@ -1,134 +1,138 @@
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import * as Haptics from 'expo-haptics';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors } from '@/constants/theme';
-import { Spacing } from '@/constants/spacing';
-import { ICON_SIZE_NAV } from '@/constants/typography';
+import { AppColors } from '@/constants/theme';
+import { ICON_TAB_ACTIVE, ICON_TAB_INACTIVE } from '@/constants/typography';
 
-const TAB_CONFIG: Record<string, { icon: keyof typeof MaterialIcons.glyphMap; label: string }> = {
-  home: { icon: 'home', label: 'Home' },
-  chat: { icon: 'chat', label: 'Chat' },
-  play: { icon: 'sports-esports', label: 'Play' },
-  rooms: { icon: 'groups', label: 'Rooms' },
-  profile: { icon: 'person', label: 'Profile' },
+const TAB_PILL_BG = 'rgba(124, 58, 237, 0.2)';
+const INACTIVE_LABEL = 'rgba(160, 160, 160, 0.4)';
+const INACTIVE_ICON = 'rgba(160, 160, 160, 0.4)';
+
+type TabGlyph = keyof typeof MaterialCommunityIcons.glyphMap;
+
+const TAB_CONFIG: Record<string, { active: TabGlyph; inactive: TabGlyph; label: string }> = {
+  home: { active: 'home', inactive: 'home-outline', label: 'Home' },
+  chat: { active: 'message', inactive: 'message-outline', label: 'Chat' },
+  play: { active: 'gamepad-variant', inactive: 'gamepad-variant-outline', label: 'Play' },
+  rooms: { active: 'account-group', inactive: 'account-group-outline', label: 'Rooms' },
+  profile: { active: 'account', inactive: 'account-outline', label: 'Profile' },
 };
-
-const palette = Colors.dark;
 
 export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const bottomPad = Math.max(insets.bottom, 10);
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: palette.card,
-          borderTopColor: palette.cardBorder,
-          paddingBottom: Math.max(insets.bottom, Spacing.xs),
-        },
-      ]}
-    >
-      {state.routes.map((route, index) => {
-        const { options } = descriptors[route.key];
-        const isFocused = state.index === index;
-        const config = TAB_CONFIG[route.name] ?? {
-          icon: 'circle' as const,
-          label: route.name,
-        };
+    <View style={[styles.wrapper, { paddingBottom: bottomPad }]}>
+      <BlurView intensity={Platform.OS === 'ios' ? 55 : 40} tint="dark" style={StyleSheet.absoluteFill} />
+      <LinearGradient
+        colors={['rgba(10,10,12,0.55)', 'rgba(10,10,12,0.92)']}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={styles.inner}>
+        {state.routes.map((route, index) => {
+          const { options } = descriptors[route.key];
+          const labelFromOptions =
+            options.tabBarLabel !== undefined
+              ? options.tabBarLabel
+              : options.title !== undefined
+                ? options.title
+                : route.name;
 
-        const onPress = () => {
-          if (process.env.EXPO_OS === 'ios') {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          }
-          const event = navigation.emit({
-            type: 'tabPress',
-            target: route.key,
-            canPreventDefault: true,
-          });
-          if (!isFocused && !event.defaultPrevented) {
-            navigation.navigate(route.name);
-          }
-        };
+          const isFocused = state.index === index;
+          const onPress = () => {
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
+            if (!isFocused && !event.defaultPrevented) {
+              navigation.navigate(route.name, route.params);
+            }
+          };
 
-        return (
-          <Pressable
-            key={route.key}
-            onPress={onPress}
-            style={styles.tabButton}
-            accessibilityRole="button"
-            accessibilityState={isFocused ? { selected: true } : {}}
-            accessibilityLabel={options.tabBarAccessibilityLabel ?? config.label}
-          >
-            <View
-              style={[
-                styles.tabContent,
-                isFocused && styles.tabContentActive,
-                !isFocused && { opacity: 0.6 },
-              ]}
+          const cfg = TAB_CONFIG[route.name];
+          const label = typeof labelFromOptions === 'string' ? labelFromOptions : cfg?.label ?? route.name;
+          const iconName = cfg
+            ? isFocused
+              ? cfg.active
+              : cfg.inactive
+            : ('circle' as TabGlyph);
+          const iconSize = isFocused ? ICON_TAB_ACTIVE : ICON_TAB_INACTIVE;
+          const iconColor = isFocused ? AppColors.text : INACTIVE_ICON;
+
+          return (
+            <Pressable
+              key={route.key}
+              accessibilityRole="button"
+              accessibilityState={isFocused ? { selected: true } : {}}
+              accessibilityLabel={options.tabBarAccessibilityLabel}
+              onPress={onPress}
+              style={styles.tab}
             >
-              {isFocused && (
-                <View style={[styles.pill, { backgroundColor: palette.tint }]} />
-              )}
-              <MaterialIcons
-                name={config.icon}
-                size={ICON_SIZE_NAV}
-                color={isFocused ? palette.text : palette.tabIconDefault}
-              />
-            </View>
-            <Text
-              style={[
-                styles.label,
-                {
-                  color: isFocused ? palette.tabIconSelected : palette.tabIconDefault,
-                },
-                isFocused && styles.labelActive,
-              ]}
-              numberOfLines={1}
-            >
-              {config.label}
-            </Text>
-          </Pressable>
-        );
-      })}
+              <View style={styles.iconSlot}>
+                {isFocused ? <View style={styles.iconPill} pointerEvents="none" /> : null}
+                <MaterialCommunityIcons name={iconName} size={iconSize} color={iconColor} />
+              </View>
+              <Text style={[styles.label, isFocused ? styles.labelActive : styles.labelInactive]} numberOfLines={1}>
+                {label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    paddingTop: Spacing.xs,
+  wrapper: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.08)',
+    overflow: 'hidden',
   },
-  tabButton: {
+  inner: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-around',
+    paddingTop: 8,
+    paddingHorizontal: 4,
+  },
+  tab: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 60,
+    gap: 4,
+    paddingVertical: 4,
   },
-  tabContent: {
-    position: 'relative',
+  iconSlot: {
+    width: 44,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    width: 52,
-    height: 40,
   },
-  tabContentActive: {
-    borderRadius: 22,
-  },
-  pill: {
+  iconPill: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: 22,
+    backgroundColor: TAB_PILL_BG,
+    borderRadius: 12,
+    marginHorizontal: 2,
   },
   label: {
     fontSize: 12,
-    marginTop: 4,
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
   labelActive: {
-    fontWeight: '700',
+    color: AppColors.text,
+  },
+  labelInactive: {
+    color: INACTIVE_LABEL,
   },
 });

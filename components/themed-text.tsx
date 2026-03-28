@@ -1,6 +1,6 @@
 import { StyleSheet, Text, type TextProps } from 'react-native';
 
-import { Typography } from '@/constants/typography';
+import { TextColors, Typography } from '@/constants/typography';
 import { useThemeColor } from '@/hooks/use-theme-color';
 
 export type ThemedTextProps = TextProps & {
@@ -15,7 +15,8 @@ export type ThemedTextProps = TextProps & {
     | 'body'
     | 'caption'
     | 'heading'
-    | 'section';
+    | 'section'
+    | 'cardTitle';
 };
 
 export function ThemedText({
@@ -36,10 +37,11 @@ export function ThemedText({
         type === 'default' ? styles.default : undefined,
         type === 'body' ? styles.body : undefined,
         type === 'caption' ? styles.caption : undefined,
-        type === 'heading' ? styles.heading : undefined,
+        type === 'heading' ? styles.section : undefined,
         type === 'section' ? styles.section : undefined,
-        type === 'title' ? styles.title : undefined,
-        type === 'defaultSemiBold' ? styles.defaultSemiBold : undefined,
+        type === 'cardTitle' ? styles.cardTitle : undefined,
+        type === 'title' ? styles.screenTitle : undefined,
+        type === 'defaultSemiBold' ? styles.cardTitle : undefined,
         type === 'subtitle' ? styles.subtitle : undefined,
         type === 'link' ? styles.link : undefined,
         style,
@@ -53,42 +55,48 @@ const styles = StyleSheet.create({
   body: {
     fontSize: Typography.body,
     lineHeight: Typography.bodyLineHeight,
+    fontWeight: '400',
+    color: TextColors.primary,
   },
   caption: {
     fontSize: Typography.caption,
     lineHeight: Typography.captionLineHeight,
-  },
-  heading: {
-    fontSize: Typography.section,
-    lineHeight: Typography.sectionLineHeight,
-    fontWeight: '600',
+    fontWeight: '400',
+    color: TextColors.secondary,
   },
   section: {
-    fontSize: Typography.section,
-    lineHeight: Typography.sectionLineHeight,
+    fontSize: Typography.sectionHeader,
+    lineHeight: Typography.sectionHeaderLineHeight,
     fontWeight: '600',
+    color: TextColors.primary,
+  },
+  cardTitle: {
+    fontSize: Typography.cardTitle,
+    lineHeight: Typography.cardTitleLineHeight,
+    fontWeight: '600',
+    color: TextColors.primary,
   },
   default: {
     fontSize: Typography.body,
     lineHeight: Typography.bodyLineHeight,
+    fontWeight: '400',
+    color: TextColors.primary,
   },
-  defaultSemiBold: {
-    fontSize: Typography.section,
-    lineHeight: Typography.sectionLineHeight,
-    fontWeight: '600',
-  },
-  title: {
-    fontSize: Typography.title,
-    lineHeight: Typography.titleLineHeight,
+  screenTitle: {
+    fontSize: Typography.screenTitle,
+    lineHeight: Typography.screenTitleLineHeight,
     fontWeight: '700',
+    color: TextColors.primary,
   },
   subtitle: {
-    fontSize: Typography.section,
-    lineHeight: Typography.sectionLineHeight,
-    fontWeight: '700',
+    fontSize: Typography.sectionHeader,
+    lineHeight: Typography.sectionHeaderLineHeight,
+    fontWeight: '600',
+    color: TextColors.primary,
   },
   link: {
     fontSize: Typography.body,
     lineHeight: Typography.bodyLineHeight,
+    fontWeight: '400',
   },
 });

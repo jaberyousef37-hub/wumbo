@@ -16,25 +16,35 @@ export function isCardPlayable(
   activeColor: UnoSuit,
   drawStack: number,
 ): boolean {
+  /* Stacked Draw Twos: only another +2 or take the pile (handled outside as draw). */
   if (drawStack > 0) {
     return card.type === 'draw2';
   }
 
+  /* Wild: always playable (color chosen after play). */
   if (card.type === 'wild') return true;
 
+  /* Wild Draw Four: only if hand has no card matching current color. */
   if (card.type === 'wild_draw4') {
     return !handHasColorMatch(hand, activeColor);
   }
 
   if (card.color === null) return false;
 
+  /* Discard is wild / WD4 — match declared color (wild / WD4 already handled above). */
   if (top.type === 'wild' || top.type === 'wild_draw4') {
     return card.color === activeColor;
   }
 
+  /* Same color as active (top shows that color on skip/reverse/+2/number). */
   if (card.color === activeColor) return true;
+
+  /* Same number (any color). */
   if (top.type === 'number' && card.type === 'number' && card.value === top.value) return true;
+
+  /* Same action type (skip / reverse / draw2) — color already matched above; allow symbol match any color? */
   if (top.type !== 'number' && card.type === top.type) return true;
+
   return false;
 }
 

@@ -4,11 +4,14 @@ import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { InGameChat } from '@/components/in-game-chat';
 import { HowToPlayButton } from '@/components/how-to-play-button';
 import { ThemedText } from '@/components/themed-text';
 import { WinnerModal } from '@/components/winner-modal';
+import type { RewardBreakdown } from '@/lib/game-rewards';
+import { useCosmetics } from '@/contexts/cosmetics-context';
 import { useTheme } from '@/contexts/theme-context';
 import { Colors } from '@/constants/theme';
 import { playPop } from '@/lib/sounds';
@@ -44,6 +47,8 @@ const EMPTY_BOARD: CellValue[] = [null, null, null, null, null, null, null, null
 
 export default function TicTacToeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { rewardGameEnd } = useCosmetics();
   const { roomId, mySymbol } = useLocalSearchParams<{ roomId?: string; mySymbol?: string }>();
 
   const [board, setBoard] = useState<CellValue[]>(EMPTY_BOARD);
@@ -52,7 +57,9 @@ export default function TicTacToeScreen() {
   const [loading, setLoading] = useState(!!roomId);
   const [wins, setWins] = useState(0);
   const [losses, setLosses] = useState(0);
+  const [endRewards, setEndRewards] = useState<RewardBreakdown | null>(null);
   const prevWinnerRef = useRef<CellValue>(null);
+  const tttCoinRef = useRef(false);
 
   useEffect(() => {
     if (!roomId) {
@@ -112,8 +119,21 @@ export default function TicTacToeScreen() {
   const result = getWinner(board);
   const draw = !result && isDraw(board);
   const gameOver = !!winner || !!result || draw;
+  const displayWinner = winner ?? result?.winner;
   const isLocal = roomId === 'local';
   const isMyTurn = (isLocal || turn === mySymbol) && !gameOver;
+
+  useEffect(() => {
+    if (!gameOver) {
+      tttCoinRef.current = false;
+      setEndRewards(null);
+      return;
+    }
+    if (tttCoinRef.current || !mySymbol) return;
+    tttCoinRef.current = true;
+    const outcome = draw ? 'draw' : displayWinner === mySymbol ? 'win' : 'loss';
+    void rewardGameEnd(outcome).then(setEndRewards);
+  }, [gameOver, draw, displayWinner, mySymbol, rewardGameEnd]);
 
   useEffect(() => {
     if (winner && winner !== prevWinnerRef.current) {
@@ -191,8 +211,8 @@ export default function TicTacToeScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top']}>
-        <View style={[styles.container, styles.centered]}>
+      <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['bottom', 'left', 'right']}>
+        <View style={[styles.container, styles.centered, { paddingTop: insets.top }]}>
           <ActivityIndicator size="large" color={palette.tint} />
         </View>
       </SafeAreaView>
@@ -201,8 +221,8 @@ export default function TicTacToeScreen() {
 
   if (!roomId || !mySymbol) {
     return (
-      <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top']}>
-        <View style={[styles.container, styles.centered]}>
+      <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['bottom', 'left', 'right']}>
+        <View style={[styles.container, styles.centered, { paddingTop: insets.top }]}>
           <ThemedText>Invalid game session.</ThemedText>
           <Pressable onPress={handleBack}>
             <ThemedText style={[styles.linkText, { color: palette.tint }]}>Go back</ThemedText>
@@ -212,12 +232,11 @@ export default function TicTacToeScreen() {
     );
   }
 
-  const displayWinner = winner ?? result?.winner;
   const displayLine = result?.line;
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top']}>
-      <View style={styles.container}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['bottom', 'left', 'right']}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         {/* Gradient header with player scores */}
         <LinearGradient
           colors={[palette.tint, palette.accentPink, palette.accentYellow]}
@@ -244,6 +263,7 @@ export default function TicTacToeScreen() {
               </View>
             </View>
           </View>
+          <InGameChat selfName="You" opponentName="Opponent" opponentIsAi={false} />
           <HowToPlayButton gameId="tictactoe" tint="#fff" />
         </LinearGradient>
 
@@ -336,10 +356,11 @@ export default function TicTacToeScreen() {
 
       {/* Winner celebration modal */}
       <WinnerModal
-        visible={!!displayWinner && !draw}
-        winnerName={displayWinner ?? ''}
+        visible={gameOver && !!roomId}
+        winnerName={draw ? 'Draw' : displayWinner ?? ''}
         score={{ wins, losses }}
-        subtitle="Great game!"
+        subtitle={draw ? "Cat's game!" : 'Great game!'}
+        rewards={endRewards}
         onPlayAgain={handleRestart}
       />
     </SafeAreaView>

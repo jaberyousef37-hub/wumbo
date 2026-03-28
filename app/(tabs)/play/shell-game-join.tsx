@@ -1,18 +1,20 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { InGameChat } from '@/components/in-game-chat';
 import { PrimaryButton } from '@/components/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { generateGuestName } from '@/lib/room-utils';
 import { supabase } from '@/lib/supabase';
-import { AppColors } from '@/constants/theme';
 import { Spacing } from '@/constants/spacing';
 
-const BG_DARK = AppColors.background;
-const CUP_GOLD = '#d4af37';
+const BG_DEEP = '#0d2818';
+const BG_CENTER = '#1a4030';
+const GOLD = '#C9A227';
 
 export default function ShellGameJoinScreen() {
   const router = useRouter();
@@ -104,8 +106,15 @@ export default function ShellGameJoinScreen() {
   const handleBack = () => router.back();
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: BG_DARK }]} edges={['top']}>
-      <View style={styles.container}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: BG_DEEP }]} edges={['bottom', 'left', 'right']}>
+      <LinearGradient
+        colors={[BG_CENTER, BG_DEEP, '#081810']}
+        locations={[0, 0.45, 1]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
@@ -116,9 +125,10 @@ export default function ShellGameJoinScreen() {
             <Pressable onPress={handleBack} style={styles.backBtn} hitSlop={12}>
               <MaterialIcons name="arrow-back" size={24} color="#fff" />
             </Pressable>
-            <ThemedText type="defaultSemiBold" style={styles.title} darkColor="#fff">
+            <ThemedText type="defaultSemiBold" style={[styles.title, styles.titleFlex]} darkColor="#fff">
               Join Shell Game
             </ThemedText>
+            <InGameChat selfName="You" opponentName="Host" opponentIsAi={false} />
           </View>
 
           <ThemedText
@@ -137,8 +147,8 @@ export default function ShellGameJoinScreen() {
                 style={[
                   styles.otpBox,
                   {
-                    backgroundColor: 'rgba(45,27,78,0.8)',
-                    borderColor: submitError ? '#ff4444' : 'rgba(212,175,55,0.5)',
+                    backgroundColor: 'rgba(13,40,24,0.92)',
+                    borderColor: submitError ? '#ff4444' : 'rgba(201,162,39,0.55)',
                     color: '#fff',
                   },
                 ]}
@@ -158,12 +168,12 @@ export default function ShellGameJoinScreen() {
           )}
         </ScrollView>
 
-        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}>
+        <View style={[styles.footer, { paddingBottom: Spacing.md }]}>
           <PrimaryButton
             label={joining ? 'Joining...' : 'Join Room'}
             onPress={handleJoin}
             disabled={!isComplete || joining}
-            style={styles.joinBtn}
+            style={{ ...styles.joinBtn, backgroundColor: GOLD }}
           />
         </View>
       </View>
@@ -197,6 +207,7 @@ const styles = StyleSheet.create({
   },
   backBtn: { marginRight: 12 },
   title: { fontSize: 20 },
+  titleFlex: { flex: 1, textAlign: 'center' },
   instruction: {
     fontSize: 16,
     marginBottom: 24,

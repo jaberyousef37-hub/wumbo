@@ -33,7 +33,7 @@ export function createInitialState(
   const players: BsPlayer[] = hands.map((hand, id) => ({
     id,
     isHuman: id === humanIndex,
-    name: id === humanIndex ? 'You' : `CPU ${id < humanIndex ? id + 1 : id}`,
+    name: id === humanIndex ? 'You' : `AI ${id < humanIndex ? id + 1 : id}`,
     hand: [...hand].sort((a, b) => a.rank - b.rank || a.suit.localeCompare(b.suit)),
   }));
 
@@ -167,12 +167,14 @@ export function skipBs(state: BsGameState): BsGameState {
 
   const winnerIndex = players.findIndex((pl) => pl.hand.length === 0);
   const hasWinner = winnerIndex >= 0;
+  const n = players.length;
+  const nextFromActor = (lp.playerId + 1) % n;
 
   return {
     ...state,
     players,
     phase: hasWinner ? 'game_over' : 'play_select',
-    turnIndex: hasWinner ? state.turnIndex : (state.turnIndex + 1) % players.length,
+    turnIndex: hasWinner ? state.turnIndex : nextFromActor,
     requiredRank: hasWinner ? state.requiredRank : nextRank(state.requiredRank),
     winnerIndex: hasWinner ? winnerIndex : null,
     lastPlay: null,

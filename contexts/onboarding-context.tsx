@@ -8,7 +8,7 @@ type OnboardingContextType = {
 const OnboardingContext = createContext<OnboardingContextType | null>(null);
 
 export function OnboardingProvider({ children }: { children: React.ReactNode }) {
-  const [hasSeenOnboarding, setHasSeenOnboarding] = useState(true);
+  const [hasSeenOnboarding, setHasSeenOnboarding] = useState(false);
 
   const completeOnboarding = useCallback(() => {
     setHasSeenOnboarding(true);

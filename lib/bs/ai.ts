@@ -11,6 +11,10 @@ function countRankSeen(observerHand: PlayingCard[], revealed: PlayingCard[], ran
   return n;
 }
 
+function countRankPlayedOnClaim(revealed: PlayingCard[], rank: Rank): number {
+  return revealed.filter((c) => c.rank === rank).length;
+}
+
 /**
  * True if the claimed play cannot be honest: more copies of `rank` were claimed than can exist
  * outside the observer's hand among unseen cards (pile + opponents).
@@ -36,7 +40,12 @@ function pickRandomSubset<T>(arr: T[], count: number, random: () => number): T[]
   return out;
 }
 
-/** ~30% lie when possible; otherwise honest or forced lie. */
+function lieProbability(difficulty: BsDifficulty): number {
+  if (difficulty === 'easy') return 0.25;
+  if (difficulty === 'medium') return 0.4;
+  return 0.55;
+}
+
 export function aiChoosePlay(
   state: BsGameState,
   playerIndex: number,
@@ -50,7 +59,7 @@ export function aiChoosePlay(
   const minPlay = Math.min(1, hand.length);
   if (maxPlay < 1) return [];
 
-  const wantLie = random() < 0.3 && nonMatching.length > 0;
+  const wantLie = random() < lieProbability(state.difficulty) && nonMatching.length > 0;
 
   if (!wantLie && matching.length > 0) {
     const k = minPlay + Math.floor(random() * (Math.min(matching.length, maxPlay) - minPlay + 1));
@@ -71,12 +80,12 @@ export function aiChoosePlay(
 }
 
 function baseCallProbability(difficulty: BsDifficulty, pileSize: number, claimedCount: number): number {
-  let p = 0.12;
-  if (difficulty === 'medium') p = 0.22;
-  if (difficulty === 'hard') p = 0.28;
-  p += Math.min(0.2, pileSize * 0.008);
-  if (claimedCount >= 3) p += 0.12;
-  return Math.min(0.92, p);
+  let p = 0.1;
+  if (difficulty === 'medium') p = 0.18;
+  if (difficulty === 'hard') p = 0.24;
+  p += Math.min(0.22, pileSize * 0.006);
+  if (claimedCount >= 3) p += 0.1;
+  return Math.min(0.9, p);
 }
 
 export function aiShouldCallBs(
@@ -94,18 +103,24 @@ export function aiShouldCallBs(
 
   if (isClaimImpossible(hand, state.revealedMemory, claimedRank, n)) {
     if (state.difficulty === 'hard') return random() < 0.95;
-    if (state.difficulty === 'medium') return random() < 0.75;
-    return random() < 0.45;
+    if (state.difficulty === 'medium') return random() < 0.78;
+    return random() < 0.5;
   }
 
   let p = baseCallProbability(state.difficulty, state.pile.length, n);
-  if (state.difficulty === 'hard') {
-    const unseenOfRank = 4 - countRankSeen(hand, state.revealedMemory, claimedRank);
-    if (unseenOfRank > 0) {
-      p += Math.min(0.28, (n / unseenOfRank) * 0.18);
-    }
-    p = Math.min(0.9, p);
+
+  const playedOfRank = countRankPlayedOnClaim(state.revealedMemory, claimedRank);
+  p += Math.min(0.32, playedOfRank * 0.045);
+
+  const unseenOfRank = 4 - countRankSeen(hand, state.revealedMemory, claimedRank);
+  if (unseenOfRank > 0 && n > 0) {
+    p += Math.min(0.3, (n / unseenOfRank) * 0.2);
   }
 
+  if (state.difficulty === 'hard') {
+    p += Math.min(0.12, (state.pile.length / 48) * 0.15);
+  }
+
+  p = Math.min(0.92, p);
   return random() < p;
 }

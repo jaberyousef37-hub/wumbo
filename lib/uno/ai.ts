@@ -27,8 +27,7 @@ export function aiChooseCard(
 
   if (drawStack > 0) {
     const draw2s = legal.filter((c) => c.type === 'draw2');
-    if (draw2s.length === 0) return null;
-    return draw2s[Math.floor(Math.random() * draw2s.length)];
+    return draw2s[Math.floor(Math.random() * draw2s.length)] ?? legal[0] ?? null;
   }
 
   if (difficulty === 'hard') {
@@ -51,7 +50,7 @@ export function aiChooseCard(
       const found = legal.find((c) => c.type === t);
       if (found) return found;
     }
-    return legal[Math.floor(Math.random() * legal.length)];
+    return legal[Math.floor(Math.random() * legal.length)] ?? legal[0] ?? null;
   }
 
   // medium — prefer action cards when hand is small (“winning”)
@@ -62,7 +61,7 @@ export function aiChooseCard(
       if (found) return found;
     }
   }
-  return legal[Math.floor(Math.random() * legal.length)];
+  return legal[Math.floor(Math.random() * legal.length)] ?? legal[0] ?? null;
 }
 
 /** Color the AI declares after playing wild / wild_draw4 */

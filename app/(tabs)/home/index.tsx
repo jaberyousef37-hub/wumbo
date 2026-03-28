@@ -10,12 +10,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { AppColors } from '@/constants/theme';
+import { useCosmetics } from '@/contexts/cosmetics-context';
 import { CARD_GAP, SECTION_GAP, Spacing } from '@/constants/spacing';
 import { useProfile } from '@/contexts/profile-context';
 import { updateAndGetDailyStreak } from '@/lib/daily-streak';
 
 const BG = AppColors.background;
 const ACCENT = AppColors.tint;
+const CARD_DARK = '#1a1a1a';
+const CARD_ELEV = '#2a2a2a';
 
 const DAILY_POOL: {
   id: string;
@@ -67,12 +70,6 @@ function greetingPeriod(): 'morning' | 'afternoon' | 'evening' {
   return 'evening';
 }
 
-const STATS = {
-  gamesToday: 3,
-  winStreak: 5,
-  totalXp: 12400,
-};
-
 const RECENT_GAME: {
   name: string;
   subtitle: string;
@@ -100,6 +97,7 @@ const POPULAR: {
 export default function HomeScreen() {
   const router = useRouter();
   const { name } = useProfile();
+  const { xpTotal, level, coins } = useCosmetics();
   const displayName = name.trim() || 'Yousef';
   const [dailyStreak, setDailyStreak] = useState(0);
 
@@ -132,52 +130,86 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <Animated.View entering={FadeIn.duration(420)}>
-          <View style={styles.topRow}>
-            <Pressable
-              onPress={() => router.push('/(tabs)/chat')}
-              style={({ pressed }) => [styles.msgPill, pressed && styles.pressed]}
-              hitSlop={8}
-            >
-              <MaterialIcons name="chat-bubble-outline" size={22} color={AppColors.text} />
-            </Pressable>
-          </View>
-          <Text style={styles.greeting}>
-            {greet}, {displayName} 👋
-          </Text>
-          <ThemedText type="caption" style={styles.dateHint}>
-            {new Date().toLocaleDateString(undefined, {
-              weekday: 'long',
-              month: 'long',
-              day: 'numeric',
-            })}
-          </ThemedText>
-          <View style={styles.streakPill}>
-            <Text style={styles.streakEmoji}>🔥</Text>
-            <Text style={styles.streakLabel}>
-              Daily streak: <Text style={styles.streakCount}>{dailyStreak}</Text>{' '}
-              {dailyStreak === 1 ? 'day' : 'days'}
+        <LinearGradient
+          colors={['#1e0b3d', '#4C1D95', '#5B21B6']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.headerGradient}
+        >
+          <Animated.View entering={FadeIn.duration(420)}>
+            <View style={styles.topRow}>
+              <Pressable
+                onPress={() => router.push('/(tabs)/chat')}
+                style={({ pressed }) => [styles.msgPill, pressed && styles.pressed]}
+                hitSlop={8}
+              >
+                <MaterialIcons name="chat-bubble-outline" size={22} color="#F5F3FF" />
+              </Pressable>
+            </View>
+            <Text style={styles.greeting}>
+              {greet}, {displayName} 👋
             </Text>
-          </View>
-        </Animated.View>
+            <ThemedText
+              type="caption"
+              style={styles.dateHint}
+              lightColor="rgba(255,255,255,0.75)"
+              darkColor="rgba(255,255,255,0.75)"
+            >
+              {new Date().toLocaleDateString(undefined, {
+                weekday: 'long',
+                month: 'long',
+                day: 'numeric',
+              })}
+            </ThemedText>
+            <View style={styles.streakPill}>
+              <Text style={styles.streakEmoji}>🔥</Text>
+              <Text style={styles.streakLabel}>
+                Daily streak: <Text style={styles.streakCount}>{dailyStreak}</Text>{' '}
+                {dailyStreak === 1 ? 'day' : 'days'}
+              </Text>
+            </View>
+          </Animated.View>
+        </LinearGradient>
 
-        <Animated.View entering={FadeInDown.delay(80).springify().damping(18)}>
+        {RECENT_GAME && (
+          <Animated.View entering={FadeInDown.delay(60).springify().damping(18)}>
+            <Text style={styles.sectionTitleContinue}>Continue playing</Text>
+            <Pressable
+              onPress={() => router.push(RECENT_GAME.route)}
+              style={({ pressed }) => [styles.continueCard, pressed && styles.pressed]}
+            >
+              <View style={styles.continueIcon}>
+                <MaterialIcons name={RECENT_GAME.icon} size={44} color={ACCENT} />
+              </View>
+              <View style={styles.continueMain}>
+                <Text style={styles.continueName}>{RECENT_GAME.name}</Text>
+                <Text style={styles.continueSub}>{RECENT_GAME.subtitle}</Text>
+                <LinearGradient
+                  colors={[ACCENT, '#A78BFA']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.continueCta}
+                >
+                  <Text style={styles.continueCtaText}>Resume</Text>
+                  <MaterialIcons name="play-arrow" size={22} color="#fff" />
+                </LinearGradient>
+              </View>
+            </Pressable>
+          </Animated.View>
+        )}
+
+        <Animated.View entering={FadeInDown.delay(120).springify().damping(18)}>
           <Pressable
             onPress={() => router.push(featured.route)}
             style={({ pressed }) => [pressed && styles.pressed]}
           >
-            <LinearGradient
-              colors={['#5B21B6', '#7C3AED', '#A78BFA']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.dailyCard}
-            >
+            <View style={styles.dailyCard}>
               <View style={styles.dailyBadge}>
                 <Text style={styles.dailyBadgeText}>Daily Challenge</Text>
               </View>
               <View style={styles.dailyRow}>
                 <View style={styles.dailyIconWrap}>
-                  <MaterialIcons name={featured.icon} size={40} color="#fff" />
+                  <MaterialIcons name={featured.icon} size={32} color="#E9D5FF" />
                 </View>
                 <View style={styles.dailyTextCol}>
                   <Text style={styles.dailyTitle}>{featured.name}</Text>
@@ -185,45 +217,11 @@ export default function HomeScreen() {
                   <Text style={styles.dailyCta}>Tap to play →</Text>
                 </View>
               </View>
-            </LinearGradient>
+            </View>
           </Pressable>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(140).springify().damping(18)} style={styles.statsRow}>
-          {(
-            [
-              { label: 'Games today', value: String(STATS.gamesToday) },
-              { label: 'Win streak', value: String(STATS.winStreak) },
-              { label: 'Total XP', value: STATS.totalXp.toLocaleString() },
-            ] as const
-          ).map((s) => (
-            <View key={s.label} style={styles.statCell}>
-              <Text style={styles.statValue}>{s.value}</Text>
-              <Text style={styles.statLabel}>{s.label}</Text>
-            </View>
-          ))}
-        </Animated.View>
-
-        {RECENT_GAME && (
-          <Animated.View entering={FadeInDown.delay(200).springify().damping(18)}>
-            <Text style={styles.sectionTitle}>Continue playing</Text>
-            <Pressable
-              onPress={() => router.push(RECENT_GAME.route)}
-              style={({ pressed }) => [styles.recentCard, pressed && styles.pressed]}
-            >
-              <View style={styles.recentIcon}>
-                <MaterialIcons name={RECENT_GAME.icon} size={28} color={ACCENT} />
-              </View>
-              <View style={styles.recentMain}>
-                <Text style={styles.recentName}>{RECENT_GAME.name}</Text>
-                <Text style={styles.recentSub}>{RECENT_GAME.subtitle}</Text>
-              </View>
-              <MaterialIcons name="chevron-right" size={24} color={AppColors.muted} />
-            </Pressable>
-          </Animated.View>
-        )}
-
-        <Animated.View entering={FadeInDown.delay(260).springify().damping(18)}>
+        <Animated.View entering={FadeInDown.delay(180).springify().damping(18)}>
           <View style={styles.sectionHeadRow}>
             <Text style={styles.sectionTitle}>Popular now</Text>
             <Pressable onPress={() => router.push('/(tabs)/play')}>
@@ -236,13 +234,13 @@ export default function HomeScreen() {
             contentContainerStyle={styles.popularScroll}
           >
             {POPULAR.map((g, i) => (
-              <Animated.View key={g.id} entering={FadeInDown.delay(280 + i * 60).springify().damping(16)}>
+              <Animated.View key={g.id} entering={FadeInDown.delay(200 + i * 50).springify().damping(16)}>
                 <Pressable
                   onPress={() => router.push(g.route)}
                   style={({ pressed }) => [styles.popularCard, pressed && styles.pressed]}
                 >
                   <View style={styles.popularIcon}>
-                    <MaterialIcons name={g.icon} size={32} color={ACCENT} />
+                    <MaterialIcons name={g.icon} size={28} color={ACCENT} />
                   </View>
                   <Text style={styles.popularName}>{g.name}</Text>
                   <View style={styles.popularLive}>
@@ -253,6 +251,21 @@ export default function HomeScreen() {
               </Animated.View>
             ))}
           </ScrollView>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(260).springify().damping(18)} style={styles.statsStrip}>
+          {(
+            [
+              { label: 'Level', value: String(level) },
+              { label: 'XP', value: xpTotal > 9999 ? `${Math.round(xpTotal / 1000)}k` : String(xpTotal) },
+              { label: 'Coins', value: coins > 9999 ? `${Math.round(coins / 1000)}k` : String(coins) },
+            ] as const
+          ).map((s, i) => (
+            <View key={s.label} style={[styles.statMini, i > 0 && styles.statMiniBorder]}>
+              <Text style={styles.statMiniValue}>{s.value}</Text>
+              <Text style={styles.statMiniLabel}>{s.label}</Text>
+            </View>
+          ))}
         </Animated.View>
       </ScrollView>
     </SafeAreaView>
@@ -267,25 +280,33 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.lg + Spacing.md,
     gap: SECTION_GAP,
   },
+  headerGradient: {
+    borderRadius: 20,
+    padding: Spacing.md,
+    marginBottom: Spacing.xs,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
   topRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: Spacing.xs },
   msgPill: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: AppColors.card,
+    backgroundColor: 'rgba(0,0,0,0.2)',
     borderWidth: 1,
-    borderColor: AppColors.cardBorder,
+    borderColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   greeting: {
-    color: AppColors.text,
+    color: '#fff',
     fontSize: 28,
     fontWeight: '800',
     letterSpacing: -0.5,
     marginTop: Spacing.xs,
   },
-  dateHint: { color: AppColors.muted, marginTop: 6 },
+  dateHint: { color: 'rgba(255,255,255,0.75)', marginTop: 6 },
   streakPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -294,20 +315,59 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 14,
-    backgroundColor: AppColors.card,
+    backgroundColor: 'rgba(0,0,0,0.22)',
     borderWidth: 1,
-    borderColor: AppColors.cardBorder,
+    borderColor: 'rgba(255,255,255,0.15)',
     alignSelf: 'flex-start',
   },
   streakEmoji: { fontSize: 22 },
-  streakLabel: { color: AppColors.text, fontSize: 15, fontWeight: '600' },
-  streakCount: { fontWeight: '900', color: ACCENT },
-  dailyCard: {
-    borderRadius: 20,
-    padding: Spacing.md,
-    overflow: 'hidden',
+  streakLabel: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  streakCount: { fontWeight: '900', color: '#FDE047' },
+  sectionTitleContinue: {
+    color: AppColors.text,
+    fontSize: 20,
+    fontWeight: '900',
+    marginBottom: Spacing.sm,
+  },
+  continueCard: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    backgroundColor: CARD_ELEV,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(124, 58, 237, 0.45)',
+    padding: Spacing.md + 4,
+    gap: Spacing.md,
+    minHeight: 148,
+  },
+  continueIcon: {
+    width: 88,
+    height: 88,
+    borderRadius: 20,
+    backgroundColor: CARD_DARK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+  },
+  continueMain: { flex: 1, minWidth: 0, justifyContent: 'center', gap: 10 },
+  continueName: { color: AppColors.text, fontSize: 26, fontWeight: '900' },
+  continueSub: { color: AppColors.muted, fontSize: 15, lineHeight: 22 },
+  continueCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 14,
+    marginTop: 4,
+  },
+  continueCtaText: { color: '#fff', fontWeight: '900', fontSize: 16 },
+  dailyCard: {
+    borderRadius: 18,
+    padding: Spacing.md,
+    backgroundColor: '#4C1D95',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
   },
   dailyBadge: {
     alignSelf: 'flex-start',
@@ -317,85 +377,51 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: Spacing.sm,
   },
-  dailyBadgeText: { color: 'rgba(255,255,255,0.95)', fontSize: 12, fontWeight: '800' },
+  dailyBadgeText: { color: 'rgba(255,255,255,0.95)', fontSize: 11, fontWeight: '800' },
   dailyRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   dailyIconWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 56,
+    height: 56,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   dailyTextCol: { flex: 1, minWidth: 0 },
-  dailyTitle: { color: '#fff', fontSize: 22, fontWeight: '900' },
-  dailyBlurb: { color: 'rgba(255,255,255,0.9)', fontSize: 14, marginTop: 4, lineHeight: 20 },
-  dailyCta: { color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: '700', marginTop: 10 },
-  statsRow: {
-    flexDirection: 'row',
-    backgroundColor: AppColors.card,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: AppColors.cardBorder,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.xs,
-  },
-  statCell: { flex: 1, alignItems: 'center', gap: 4 },
-  statValue: { color: AppColors.text, fontSize: 20, fontWeight: '800' },
-  statLabel: { color: AppColors.muted, fontSize: 11, fontWeight: '600', textAlign: 'center' },
-  sectionTitle: {
-    color: AppColors.text,
-    fontSize: 18,
-    fontWeight: '800',
-    marginBottom: Spacing.sm,
-  },
+  dailyTitle: { color: '#fff', fontSize: 19, fontWeight: '900' },
+  dailyBlurb: { color: 'rgba(255,255,255,0.88)', fontSize: 14, marginTop: 4, lineHeight: 20 },
+  dailyCta: { color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: '700', marginTop: 8 },
   sectionHeadRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: Spacing.sm,
   },
+  sectionTitle: {
+    color: AppColors.text,
+    fontSize: 18,
+    fontWeight: '800',
+  },
   seeAll: { color: ACCENT, fontWeight: '700', fontSize: 14 },
-  recentCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: AppColors.card,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: AppColors.cardBorder,
-    padding: Spacing.md,
-    gap: Spacing.sm,
-  },
-  recentIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: 'rgba(124, 58, 237, 0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recentMain: { flex: 1, minWidth: 0 },
-  recentName: { color: AppColors.text, fontSize: 17, fontWeight: '800' },
-  recentSub: { color: AppColors.muted, fontSize: 13, marginTop: 2 },
   popularScroll: { gap: CARD_GAP, paddingRight: Spacing.sm },
   popularCard: {
-    width: 148,
-    backgroundColor: AppColors.card,
+    width: 132,
+    backgroundColor: CARD_DARK,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: AppColors.cardBorder,
-    padding: Spacing.md,
+    padding: Spacing.sm + 2,
   },
   popularIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 14,
-    backgroundColor: 'rgba(124, 58, 237, 0.12)',
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: CARD_ELEV,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.sm,
   },
-  popularName: { color: AppColors.text, fontSize: 16, fontWeight: '800', marginBottom: 8 },
+  popularName: { color: AppColors.text, fontSize: 15, fontWeight: '800', marginBottom: 6 },
   popularLive: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   liveDot: {
     width: 6,
@@ -403,6 +429,24 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: AppColors.success,
   },
-  popularLiveText: { color: AppColors.muted, fontSize: 12, fontWeight: '600' },
+  popularLiveText: { color: AppColors.muted, fontSize: 11, fontWeight: '600' },
+  statsStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: CARD_DARK,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: AppColors.cardBorder,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    marginTop: Spacing.xs,
+  },
+  statMini: { flex: 1, alignItems: 'center', gap: 2 },
+  statMiniBorder: {
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: 'rgba(255,255,255,0.08)',
+  },
+  statMiniValue: { color: AppColors.text, fontSize: 15, fontWeight: '800' },
+  statMiniLabel: { color: AppColors.muted, fontSize: 10, fontWeight: '600' },
   pressed: { opacity: 0.92 },
 });

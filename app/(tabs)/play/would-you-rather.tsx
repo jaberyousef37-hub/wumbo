@@ -1,5 +1,4 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -20,8 +19,9 @@ import { WYR_QUESTIONS, type WyrCategory } from '@/lib/would-you-rather-data';
 import { fakePercentsForPick } from '@/lib/wyr-stats';
 
 const BG = '#0c0614';
-const LEFT_GRAD = ['#0D9488', '#115E59'] as const;
-const RIGHT_GRAD = ['#7C3AED', '#4C1D95'] as const;
+const LEFT_SOLID = '#7C3AED';
+const RIGHT_SOLID = '#E74C3C';
+const MENU_CARD_BG = '#2a2a2a';
 
 type ScreenPhase = 'menu' | 'play';
 type PlayMode = 'solo' | 'friends';
@@ -148,11 +148,11 @@ export default function WouldYouRatherScreen() {
       <Text style={styles.menuTitle}>How do you want to play?</Text>
       <Text style={styles.menuSub}>Solo: you answer every prompt. Friends: pass the phone — turns rotate.</Text>
       <Pressable onPress={() => startPlay('solo')} style={({ pressed }) => [styles.modeCard, pressed && styles.pressed]}>
-        <LinearGradient colors={['#312E81', '#1E1B4B']} style={styles.modeGrad}>
+        <View style={[styles.modeGrad, { backgroundColor: MENU_CARD_BG }]}>
           <MaterialIcons name="person" size={36} color="#C4B5FD" />
           <Text style={styles.modeName}>Solo</Text>
           <Text style={styles.modeDesc}>You choose every time — instant results.</Text>
-        </LinearGradient>
+        </View>
       </Pressable>
       <View style={styles.friendsBlock}>
         <Text style={styles.friendsHead}>Friends (take turns)</Text>
@@ -188,9 +188,13 @@ export default function WouldYouRatherScreen() {
         <Pressable
           onPress={() => onPick('a')}
           disabled={!!picked}
-          style={({ pressed }) => [styles.half, styles.halfLeft, pressed && !picked && { opacity: 0.92 }]}
+          style={({ pressed }) => [
+            styles.half,
+            styles.halfLeft,
+            { backgroundColor: LEFT_SOLID },
+            pressed && !picked && { opacity: 0.92 },
+          ]}
         >
-          <LinearGradient colors={[...LEFT_GRAD]} style={StyleSheet.absoluteFill} />
           <Text style={styles.orLabel}>Would you rather…</Text>
           <Text style={styles.optionText}>{q.a}</Text>
           {picked === 'a' && <View pointerEvents="none" style={styles.chosenRing} />}
@@ -199,9 +203,13 @@ export default function WouldYouRatherScreen() {
         <Pressable
           onPress={() => onPick('b')}
           disabled={!!picked}
-          style={({ pressed }) => [styles.half, styles.halfRight, pressed && !picked && { opacity: 0.92 }]}
+          style={({ pressed }) => [
+            styles.half,
+            styles.halfRight,
+            { backgroundColor: RIGHT_SOLID },
+            pressed && !picked && { opacity: 0.92 },
+          ]}
         >
-          <LinearGradient colors={[...RIGHT_GRAD]} style={StyleSheet.absoluteFill} />
           <Text style={styles.orLabel}>…or…</Text>
           <Text style={styles.optionText}>{q.b}</Text>
           {picked === 'b' && <View pointerEvents="none" style={styles.chosenRing} />}
@@ -214,9 +222,9 @@ export default function WouldYouRatherScreen() {
         ) : (
           <>
             <Text style={styles.resultsTitle}>Worldwide picks (simulated)</Text>
-            <StatBar label={q.a} pct={aPct} fill="#2DD4BF" track="rgba(255,255,255,0.12)" anim={barA} />
-            <StatBar label={q.b} pct={bPct} fill="#C4B5FD" track="rgba(255,255,255,0.12)" anim={barB} />
-            <Pressable onPress={nextQuestion} style={({ pressed }) => [styles.nextBtn, pressed && styles.pressed]}>
+            <StatBar label={q.a} pct={aPct} fill={LEFT_SOLID} track="rgba(255,255,255,0.12)" anim={barA} />
+            <StatBar label={q.b} pct={bPct} fill={RIGHT_SOLID} track="rgba(255,255,255,0.12)" anim={barB} />
+            <Pressable onPress={nextQuestion} style={({ pressed }) => [styles.nextBtnSolid, pressed && styles.pressed]}>
               <Text style={styles.nextBtnText}>Next question</Text>
               <MaterialIcons name="arrow-forward" size={20} color="#fff" />
             </Pressable>
@@ -368,17 +376,17 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 8,
   },
-  nextBtn: {
+  nextBtnSolid: {
     marginTop: Spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#5B21B6',
     paddingVertical: 14,
     borderRadius: 14,
+    backgroundColor: '#7C3AED',
     borderWidth: 1,
-    borderColor: 'rgba(196, 181, 253, 0.45)',
+    borderColor: 'rgba(255,255,255,0.2)',
   },
   nextBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
 });

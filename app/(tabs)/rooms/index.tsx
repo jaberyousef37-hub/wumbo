@@ -36,73 +36,7 @@ type RoomRow = {
   hostInitials: string;
 };
 
-const OPEN_ROOMS: RoomRow[] = [
-  {
-    id: 'r1',
-    game: 'UNO',
-    gameId: 'uno',
-    gameIcon: 'style',
-    code: '4832',
-    players: 3,
-    maxPlayers: 6,
-    friends: true,
-    isPrivate: false,
-    hostName: 'Alex J.',
-    hostInitials: 'AJ',
-  },
-  {
-    id: 'r2',
-    game: 'BS',
-    gameId: 'bs',
-    gameIcon: 'casino',
-    code: '9174',
-    players: 4,
-    maxPlayers: 6,
-    friends: false,
-    isPrivate: true,
-    hostName: 'Sam K.',
-    hostInitials: 'SK',
-  },
-  {
-    id: 'r3',
-    game: 'Chess',
-    gameId: 'chess',
-    gameIcon: 'emoji-events',
-    code: '1209',
-    players: 1,
-    maxPlayers: 2,
-    friends: true,
-    isPrivate: true,
-    hostName: 'Jordan M.',
-    hostInitials: 'JM',
-  },
-  {
-    id: 'r4',
-    game: 'Tic Tac Toe',
-    gameId: 'tictactoe',
-    gameIcon: 'grid-3x3',
-    code: '5521',
-    players: 2,
-    maxPlayers: 2,
-    friends: false,
-    isPrivate: false,
-    hostName: 'Riley P.',
-    hostInitials: 'RP',
-  },
-  {
-    id: 'r5',
-    game: 'Trivia',
-    gameId: 'trivia',
-    gameIcon: 'quiz',
-    code: '8890',
-    players: 5,
-    maxPlayers: 8,
-    friends: true,
-    isPrivate: false,
-    hostName: 'Casey L.',
-    hostInitials: 'CL',
-  },
-];
+const OPEN_ROOMS: RoomRow[] = [];
 
 const LIVE_PLAYER_COUNT = 127;
 
@@ -170,11 +104,17 @@ export default function RoomsScreen() {
         >
           {filteredRooms.length === 0 ? (
             <View style={styles.empty}>
-              <MaterialIcons name="groups" size={48} color={AppColors.muted} />
-              <Text style={styles.emptyTitle}>No active rooms — be the first!</Text>
+              <Text style={styles.emptyEmoji}>🎮</Text>
+              <Text style={styles.emptyTitle}>No active rooms</Text>
               <ThemedText type="caption" style={styles.emptySub}>
-                Host a game and share the code with friends.
+                Start a room and share the code so others can join.
               </ThemedText>
+              <Pressable
+                onPress={() => router.push('/(tabs)/play/create-room')}
+                style={({ pressed }) => [styles.emptyCta, pressed && styles.pressed]}
+              >
+                <Text style={styles.emptyCtaText}>Create the first room!</Text>
+              </Pressable>
             </View>
           ) : (
             filteredRooms.map((room) => {
@@ -356,14 +296,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     gap: Spacing.sm,
   },
+  emptyEmoji: { fontSize: 56, marginBottom: Spacing.xs },
   emptyTitle: {
     color: AppColors.text,
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '800',
     textAlign: 'center',
-    marginTop: Spacing.sm,
   },
   emptySub: { color: AppColors.muted, textAlign: 'center', lineHeight: 20 },
+  emptyCta: {
+    marginTop: Spacing.md,
+    backgroundColor: ACCENT,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 14,
+  },
+  emptyCtaText: { color: '#fff', fontWeight: '800', fontSize: 16 },
   footer: {
     paddingHorizontal: Spacing.sm,
     paddingTop: Spacing.xs,

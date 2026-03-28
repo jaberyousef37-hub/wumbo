@@ -24,6 +24,8 @@ export type UnoGameState = {
   /** Effective color to match (after wilds) */
   activeColor: UnoSuit;
   hands: [UnoCard[], UnoCard[], UnoCard[]];
+  /** 2 = you + one AI (reverse acts as skip); 3 = you + two AIs */
+  numPlayers: 2 | 3;
   currentTurn: UnoSeat;
   /** +1: 0→1→2→0, -1: reverse */
   direction: 1 | -1;

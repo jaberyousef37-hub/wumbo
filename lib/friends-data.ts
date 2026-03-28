@@ -26,36 +26,11 @@ export type FriendRequest = {
 // Current user ID for demo (no auth)
 export const CURRENT_USER_ID = 'user_yousef';
 
-// Fake friends list
-export const FAKE_FRIENDS: Friend[] = [
-  { id: 'f1', name: 'Luna Star', username: '@lunastar', avatar: 'LS', online: true, lastSeen: 'Now' },
-  { id: 'f2', name: 'Max Power', username: '@maxpower', avatar: 'MP', online: false, lastSeen: '2h ago' },
-  { id: 'f3', name: 'Zara Swift', username: '@zaraswift', avatar: 'ZS', online: true, lastSeen: 'Now' },
-  { id: 'f4', name: 'Leo Knight', username: '@leoknight', avatar: 'LK', online: false, lastSeen: '1d ago' },
-  { id: 'f5', name: 'Aria Bloom', username: '@ariabloom', avatar: 'AB', online: true, lastSeen: '5m ago' },
-];
+// Fake friends list (empty — shows Friends tab empty state; replace with API data later)
+export const FAKE_FRIENDS: Friend[] = [];
 
-// Fake pending requests (received)
-export const FAKE_PENDING_REQUESTS: FriendRequest[] = [
-  {
-    id: 'req1',
-    senderId: 'u_riley',
-    senderName: 'Riley Chen',
-    senderUsername: '@rileychen',
-    senderAvatar: 'RC',
-    status: 'pending',
-    createdAt: '10m ago',
-  },
-  {
-    id: 'req2',
-    senderId: 'u_maya',
-    senderName: 'Maya Storm',
-    senderUsername: '@mayastorm',
-    senderAvatar: 'MS',
-    status: 'pending',
-    createdAt: '1h ago',
-  },
-];
+/** @deprecated use local state; kept for typing */
+export const FAKE_PENDING_REQUESTS: FriendRequest[] = [];
 
 // Fake search results
 export const FAKE_SEARCH_USERS = [

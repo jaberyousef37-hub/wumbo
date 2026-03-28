@@ -3,16 +3,35 @@ import { buildDeck, shuffle } from './deck';
 import { drawCards, isCardPlayable, topCard } from './rules';
 import type { UnoCard, UnoDifficulty, UnoGameState, UnoSeat, UnoSuit } from './types';
 
-export function nextSeat(who: UnoSeat, dir: 1 | -1): UnoSeat {
-  if (dir === 1) return ((who + 1) % 3) as UnoSeat;
-  return ((who + 2) % 3) as UnoSeat;
+function seatsInGame(n: 2 | 3): UnoSeat[] {
+  return n === 2 ? [0, 1] : [0, 1, 2];
 }
 
-function skipSeat(who: UnoSeat, dir: 1 | -1): UnoSeat {
-  return nextSeat(nextSeat(who, dir), dir);
+/** Next seat in play order (clockwise when dir === 1). */
+export function nextSeat(who: UnoSeat, dir: 1 | -1, numPlayers: 2 | 3): UnoSeat {
+  const seats = seatsInGame(numPlayers);
+  let idx = seats.indexOf(who);
+  if (idx < 0) idx = 0;
+  const i = idx;
+  const step = dir === 1 ? 1 : -1;
+  const nextIdx = (i + step + seats.length) % seats.length;
+  return seats[nextIdx]!;
 }
 
-export function createInitialGame(aiDifficulty: UnoDifficulty = 'medium'): UnoGameState {
+function skipSeat(who: UnoSeat, dir: 1 | -1, numPlayers: 2 | 3): UnoSeat {
+  return nextSeat(nextSeat(who, dir, numPlayers), dir, numPlayers);
+}
+
+/** Turn after Wild Draw Four: victim draws 4 and skips; next player after victim plays. */
+function turnAfterWildDrawFour(state: UnoGameState, whoPlayed: UnoSeat): UnoSeat {
+  const victim = nextSeat(whoPlayed, state.direction, state.numPlayers);
+  return nextSeat(victim, state.direction, state.numPlayers);
+}
+
+export function createInitialGame(
+  aiDifficulty: UnoDifficulty = 'medium',
+  numPlayers: 2 | 3 = 3,
+): UnoGameState {
   let deck = shuffle(buildDeck());
   let starter: UnoCard;
   while (true) {
@@ -26,7 +45,7 @@ export function createInitialGame(aiDifficulty: UnoDifficulty = 'medium'): UnoGa
   }
   const hands: [UnoCard[], UnoCard[], UnoCard[]] = [[], [], []];
   for (let i = 0; i < 7; i++) {
-    for (let p = 0; p < 3; p++) {
+    for (const p of seatsInGame(numPlayers)) {
       const card = deck.pop();
       if (!card) throw new Error('Deck underflow');
       hands[p].push(card);
@@ -37,6 +56,7 @@ export function createInitialGame(aiDifficulty: UnoDifficulty = 'medium'): UnoGa
     discard: [starter],
     activeColor: starter.color!,
     hands,
+    numPlayers,
     currentTurn: 0,
     direction: 1,
     winner: null,
@@ -64,18 +84,24 @@ function setHand(state: UnoGameState, seat: UnoSeat, hand: UnoCard[]): UnoGameSt
 }
 
 /** After skip / reverse / wild (non-WD4) / normal — turn passes along direction. */
-function turnAfterStandardCard(who: UnoSeat, card: UnoCard, dir: 1 | -1): { turn: UnoSeat; dir: 1 | -1 } {
-  if (card.type === 'skip') {
-    return { turn: skipSeat(who, dir), dir };
+function turnAfterStandardCard(
+  who: UnoSeat,
+  card: UnoCard,
+  dir: 1 | -1,
+  numPlayers: 2 | 3,
+): { turn: UnoSeat; dir: 1 | -1 } {
+  const n = numPlayers;
+  if (card.type === 'skip' || (card.type === 'reverse' && n === 2)) {
+    return { turn: skipSeat(who, dir, n), dir };
   }
   if (card.type === 'reverse') {
     const nd = (-dir) as 1 | -1;
-    return { turn: nextSeat(who, nd), dir: nd };
+    return { turn: nextSeat(who, nd, n), dir: nd };
   }
   if (card.type === 'wild') {
-    return { turn: nextSeat(who, dir), dir };
+    return { turn: nextSeat(who, dir, n), dir };
   }
-  return { turn: nextSeat(who, dir), dir };
+  return { turn: nextSeat(who, dir, n), dir };
 }
 
 function syncPlayerUnoFlag(state: UnoGameState): UnoGameState {
@@ -110,7 +136,7 @@ function finalizeDrawTwoPlay(
 
   next = {
     ...next,
-    currentTurn: nextSeat(who, state.direction),
+    currentTurn: nextSeat(who, state.direction, state.numPlayers),
   };
   return syncPlayerUnoFlag(next);
 }
@@ -136,7 +162,7 @@ function finalizeColoredPlay(
     });
   }
 
-  const { turn, dir } = turnAfterStandardCard(who, card, state.direction);
+  const { turn, dir } = turnAfterStandardCard(who, card, state.direction, state.numPlayers);
   next = { ...next, currentTurn: turn, direction: dir };
 
   return syncPlayerUnoFlag(next);
@@ -200,15 +226,12 @@ export function playCard(
       });
     }
 
-    const victim = nextSeat(who, state.direction);
+    const victim = nextSeat(who, state.direction, state.numPlayers);
     if (card.type === 'wild_draw4') {
       next = drawCards(next, 4, victim);
-    }
-
-    if (card.type === 'wild_draw4') {
-      next = { ...next, currentTurn: who };
+      next = { ...next, currentTurn: turnAfterWildDrawFour(state, who) };
     } else {
-      const { turn, dir } = turnAfterStandardCard(who, { ...card, type: 'wild' }, state.direction);
+      const { turn, dir } = turnAfterStandardCard(who, { ...card, type: 'wild' }, state.direction, state.numPlayers);
       next = { ...next, currentTurn: turn, direction: dir };
     }
     return syncPlayerUnoFlag(next);
@@ -235,15 +258,12 @@ export function completePendingWild(state: UnoGameState, color: UnoSuit): UnoGam
     });
   }
 
-  const victim = nextSeat(0, state.direction);
+  const victim = nextSeat(0, state.direction, state.numPlayers);
   if (top.type === 'wild_draw4') {
     next = drawCards(next, 4, victim);
-  }
-
-  if (top.type === 'wild_draw4') {
-    next = { ...next, currentTurn: 0 };
+    next = { ...next, currentTurn: turnAfterWildDrawFour(state, 0) };
   } else {
-    const { turn, dir } = turnAfterStandardCard(0, { ...top, type: 'wild' }, state.direction);
+    const { turn, dir } = turnAfterStandardCard(0, { ...top, type: 'wild' }, state.direction, state.numPlayers);
     next = { ...next, currentTurn: turn, direction: dir };
   }
   return syncPlayerUnoFlag(next);
@@ -269,15 +289,12 @@ export function completeAiWild(state: UnoGameState): UnoGameState | null {
     });
   }
 
-  const victim = nextSeat(w, state.direction);
+  const victim = nextSeat(w, state.direction, state.numPlayers);
   if (top.type === 'wild_draw4') {
     next = drawCards(next, 4, victim);
-  }
-
-  if (top.type === 'wild_draw4') {
-    next = { ...next, currentTurn: w };
+    next = { ...next, currentTurn: turnAfterWildDrawFour(state, w) };
   } else {
-    const { turn, dir } = turnAfterStandardCard(w, { ...top, type: 'wild' }, state.direction);
+    const { turn, dir } = turnAfterStandardCard(w, { ...top, type: 'wild' }, state.direction, state.numPlayers);
     next = { ...next, currentTurn: turn, direction: dir };
   }
   return syncPlayerUnoFlag(next);
@@ -291,7 +308,7 @@ export function playerDrawOne(state: UnoGameState): UnoGameState | null {
 
   if (state.drawStack > 0) {
     let next = drawCards(state, state.drawStack, 0);
-    next = { ...next, drawStack: 0, currentTurn: nextSeat(0, state.direction) };
+    next = { ...next, drawStack: 0, currentTurn: nextSeat(0, state.direction, state.numPlayers) };
     return syncPlayerUnoFlag(next);
   }
 
@@ -301,7 +318,7 @@ export function playerDrawOne(state: UnoGameState): UnoGameState | null {
   if (playable) return null;
 
   let next = drawCards(state, 1, 0);
-  next = { ...next, currentTurn: nextSeat(0, state.direction) };
+  next = { ...next, currentTurn: nextSeat(0, state.direction, state.numPlayers) };
   return syncPlayerUnoFlag(next);
 }
 
@@ -311,26 +328,35 @@ export function acknowledgePlayerUno(state: UnoGameState): UnoGameState | null {
 }
 
 export function applyUnoCatchPenalty(state: UnoGameState): UnoGameState {
-  const aiTurn = state.currentTurn === 1 || state.currentTurn === 2;
+  const aiTurn =
+    state.currentTurn === 1 || (state.numPlayers === 3 && state.currentTurn === 2);
   if (state.hands[0].length === 1 && !state.playerUnoAcknowledged && aiTurn) {
     return syncPlayerUnoFlag(drawCards(state, 2, 0));
   }
   return state;
 }
 
+function opponentSeats(state: UnoGameState, seat: UnoSeat): UnoSeat[] {
+  return seatsInGame(state.numPlayers).filter((s) => s !== seat);
+}
+
 function minOpponentHand(state: UnoGameState, seat: UnoSeat): number {
-  const sizes = [0, 1, 2].filter((s) => s !== seat).map((s) => state.hands[s].length);
+  const sizes = opponentSeats(state, seat).map((s) => state.hands[s].length);
   return Math.min(...sizes);
+}
+
+function isAiSeat(state: UnoGameState, seat: UnoSeat): boolean {
+  return seat === 1 || (state.numPlayers === 3 && seat === 2);
 }
 
 export function aiDrawTurn(state: UnoGameState): UnoGameState | null {
   const seat = state.currentTurn;
-  if (seat !== 1 && seat !== 2) return null;
+  if (!isAiSeat(state, seat)) return null;
   if (state.winner || state.wildPicker) return null;
 
   if (state.drawStack > 0) {
     let next = drawCards(state, state.drawStack, seat);
-    next = { ...next, drawStack: 0, currentTurn: nextSeat(seat, state.direction) };
+    next = { ...next, drawStack: 0, currentTurn: nextSeat(seat, state.direction, state.numPlayers) };
     return syncPlayerUnoFlag(next);
   }
 
@@ -344,12 +370,12 @@ export function aiDrawTurn(state: UnoGameState): UnoGameState | null {
     }
     return played;
   }
-  return syncPlayerUnoFlag({ ...s, currentTurn: nextSeat(seat, s.direction) });
+  return syncPlayerUnoFlag({ ...s, currentTurn: nextSeat(seat, s.direction, state.numPlayers) });
 }
 
 export function runAiTurn(state: UnoGameState): UnoGameState {
   const seat = state.currentTurn;
-  if (seat !== 1 && seat !== 2) return state;
+  if (!isAiSeat(state, seat)) return state;
   let s = state;
   if (s.winner) return s;
 
@@ -378,11 +404,12 @@ export function runAiTurn(state: UnoGameState): UnoGameState {
     minOpponentHand(s, seat),
     s.drawStack,
   );
-  if (!choice) {
+  const pick = choice ?? legal[0];
+  if (!pick) {
     return aiDrawTurn(s) ?? s;
   }
 
-  let next = playCard(s, choice.id, seat);
+  let next = playCard(s, pick.id, seat);
   if (!next) return s;
   if (next.wildPicker === seat) {
     next = completeAiWild(next) ?? next;

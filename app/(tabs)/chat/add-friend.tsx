@@ -52,8 +52,8 @@ export default function AddFriendScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top']}>
-      <View style={styles.container}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['bottom', 'left', 'right']}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
             <MaterialIcons name="arrow-back" size={24} color={palette.text} />
@@ -115,7 +115,7 @@ export default function AddFriendScreen() {
             {
               borderTopColor: palette.cardBorder,
               backgroundColor: palette.background,
-              paddingBottom: Math.max(insets.bottom, Spacing.md),
+              paddingBottom: Spacing.md,
             },
           ]}
         >

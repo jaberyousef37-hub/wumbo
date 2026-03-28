@@ -1,7 +1,7 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
@@ -10,7 +10,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/avatar';
 import { BaseCard } from '@/components/base-card';
 import { ThemedText } from '@/components/themed-text';
+import { useCosmetics } from '@/contexts/cosmetics-context';
 import { useProfile } from '@/contexts/profile-context';
+import { getAvatarEmoji, getProfileFrameStyle } from '@/lib/cosmetics/catalog';
 import { AppColors, Colors } from '@/constants/theme';
 import { CARD_GAP, SECTION_GAP, Spacing } from '@/constants/spacing';
 import { ICON_SIZE_CARD } from '@/constants/typography';
@@ -45,6 +47,9 @@ const palette = Colors.dark;
 export default function ProfileScreen() {
   const router = useRouter();
   const { name: profileName, username: profileUsername } = useProfile();
+  const { coins, equipped } = useCosmetics();
+  const avatarEmoji = getAvatarEmoji(equipped.avatar);
+  const frameStyle = getProfileFrameStyle(equipped.profile_frame);
   const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(null);
   const [recentGames, setRecentGames] = useState<RecentGameRow[]>([]);
 
@@ -93,8 +98,30 @@ export default function ProfileScreen() {
           showsVerticalScrollIndicator={false}
         >
           <Pressable onPress={pickImage} style={styles.avatarWrap}>
-            <View style={styles.avatarOuter}>
-              <Avatar initials={displayInitials} imageUri={profilePhotoUri} size="xlarge" />
+            <View
+              style={[
+                styles.avatarOuter,
+                {
+                  borderWidth: frameStyle.borderWidth,
+                  borderColor: frameStyle.borderColor,
+                  ...(frameStyle.shadowColor
+                    ? {
+                        shadowColor: frameStyle.shadowColor,
+                        shadowOpacity: frameStyle.shadowOpacity ?? 0.45,
+                        shadowRadius: frameStyle.shadowRadius ?? 8,
+                        shadowOffset: { width: 0, height: 3 },
+                        elevation: 8,
+                      }
+                    : {}),
+                },
+              ]}
+            >
+              <Avatar
+                initials={displayInitials}
+                imageUri={profilePhotoUri}
+                emoji={profilePhotoUri ? null : avatarEmoji}
+                size="xlarge"
+              />
             </View>
             <View style={[styles.editAvatarBtn, { backgroundColor: palette.tint }]}>
               <MaterialIcons name="edit" size={ICON_SIZE_CARD} color="#fff" />
@@ -107,6 +134,27 @@ export default function ProfileScreen() {
           <ThemedText type="body" style={[styles.username, { color: AppColors.muted }]}>
             {displayUsername}
           </ThemedText>
+
+          <View style={styles.coinShopRow}>
+            <View style={[styles.coinPill, { backgroundColor: palette.card, borderColor: palette.cardBorder }]}>
+              <ThemedText style={styles.coinEmoji}>🪙</ThemedText>
+              <ThemedText type="defaultSemiBold" style={styles.coinAmt}>
+                {coins}
+              </ThemedText>
+            </View>
+            <Pressable
+              onPress={() => router.push('/profile/shop' as Href)}
+              style={({ pressed }) => [
+                styles.shopBtn,
+                { backgroundColor: palette.tint, opacity: pressed ? 0.9 : 1 },
+              ]}
+            >
+              <MaterialIcons name="storefront" size={20} color="#fff" />
+              <ThemedText type="defaultSemiBold" style={styles.shopBtnText}>
+                Shop
+              </ThemedText>
+            </Pressable>
+          </View>
 
           <View
             style={[
@@ -346,9 +394,35 @@ const styles = StyleSheet.create({
     height: 120,
     borderRadius: 60,
     overflow: 'hidden',
-    borderWidth: 3,
-    borderColor: AppColors.border,
   },
+  coinShopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    width: '100%',
+    justifyContent: 'center',
+    marginTop: Spacing.xs,
+  },
+  coinPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  coinEmoji: { fontSize: 20 },
+  coinAmt: { color: '#FBBF24', fontWeight: '800', fontSize: 17 },
+  shopBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 999,
+  },
+  shopBtnText: { color: '#fff', fontWeight: '800' },
   editAvatarBtn: {
     position: 'absolute',
     bottom: 0,

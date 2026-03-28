@@ -16,10 +16,12 @@ const SIZES: Record<AvatarSize, number> = {
 type AvatarProps = {
   initials?: string;
   imageUri?: string | null;
+  /** Shop emoji avatar (single grapheme) */
+  emoji?: string | null;
   size?: AvatarSize;
 };
 
-export function Avatar({ initials, imageUri, size = 'medium' }: AvatarProps) {
+export function Avatar({ initials, imageUri, emoji, size = 'medium' }: AvatarProps) {
   const { isDark } = useTheme();
   const dim = SIZES[size];
   const fontSize =
@@ -32,6 +34,20 @@ export function Avatar({ initials, imageUri, size = 'medium' }: AvatarProps) {
         source={{ uri: imageUri }}
         style={[styles.avatar, { width: dim, height: dim, borderRadius: dim / 2 }]}
       />
+    );
+  }
+
+  if (emoji) {
+    const emojiFont = size === 'mini' ? 14 : size === 'small' ? 22 : size === 'medium' ? 28 : size === 'large' ? 40 : 72;
+    return (
+      <View
+        style={[
+          styles.avatar,
+          { width: dim, height: dim, borderRadius: dim / 2, backgroundColor: bgColor },
+        ]}
+      >
+        <Text style={{ fontSize: emojiFont }}>{emoji}</Text>
+      </View>
     );
   }
 

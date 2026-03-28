@@ -5,7 +5,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -25,7 +25,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Avatar } from '@/components/avatar';
 import { ThemedText } from '@/components/themed-text';
 import { AppColors, Colors } from '@/constants/theme';
-import { BUTTON_HEIGHT, Spacing } from '@/constants/spacing';
+import { Spacing } from '@/constants/spacing';
 import { useTheme } from '@/contexts/theme-context';
 import {
   CHALLENGE_GAME_PICKS,
@@ -40,9 +40,6 @@ import {
   type RichInvitePayload,
 } from '@/lib/chat-rich-content';
 import { generateRoomCode } from '@/lib/room-utils';
-import { supabase } from '@/lib/supabase';
-
-const SENDER_NAME = 'Guest';
 
 const ROOM_NAMES: Record<string, string> = {
   '1': 'Alex Rivera',
@@ -53,14 +50,6 @@ const ROOM_NAMES: Record<string, string> = {
 const REACTION_PICKER_EMOJIS = ['❤️', '😂', '😮', '😢', '👍', '🔥'] as const;
 
 const INPUT_EMOJI_SHEET = ['😀', '😂', '🥹', '❤️', '🔥', '👍', '👎', '😮', '😢', '🎉', '✨', '🙏'];
-
-type MessageRow = {
-  id: string;
-  room_id: string;
-  sender_name: string;
-  content: string;
-  created_at: string;
-};
 
 type ChatMessageBase = {
   id: string;
@@ -79,7 +68,10 @@ type ReceiptStatus = 'sent' | 'delivered' | 'read';
 const BUBBLE_PURPLE = AppColors.tint;
 const BUBBLE_RECEIVED = '#3A3A3C';
 const READ_BLUE = '#34B7F1';
-const INPUT_DISABLED_BG = '#2C2C2E';
+const COMPOSER_BORDER = '#333333';
+const INPUT_FILL = '#1a1a1a';
+const SEND_ACTIVE = '#7C3AED';
+const SEND_DISABLED = '#555555';
 
 const THIRTY_MIN_MS = 30 * 60 * 1000;
 
@@ -87,39 +79,8 @@ function reactionsStorageKey(roomId: string): string {
   return `wumbo-chat-reactions-v1-${roomId}`;
 }
 
-function parseMessageRow(msg: MessageRow): ChatMessage {
-  const createdAt = msg.created_at;
-  const isSent = msg.sender_name === SENDER_NAME;
-  const rich = tryParseRichPayload(msg.content);
-  if (rich?.t === 'img') {
-    const p = rich as RichImagePayload;
-    return {
-      id: msg.id,
-      createdAt,
-      isSent,
-      kind: 'image',
-      imageUri: `data:${p.mime};base64,${p.b64}`,
-      caption: p.caption,
-    };
-  }
-  if (rich?.t === 'invite') {
-    const p = rich as RichInvitePayload;
-    return {
-      id: msg.id,
-      createdAt,
-      isSent,
-      kind: 'invite',
-      gameId: p.gameId,
-      code: p.code,
-    };
-  }
-  return {
-    id: msg.id,
-    createdAt,
-    isSent,
-    kind: 'text',
-    text: msg.content,
-  };
+function messagesStorageKey(roomId: string): string {
+  return `wumbo-chat-messages-v1-${roomId}`;
 }
 
 function shouldShowTimeDivider(prevIso: string | undefined, currIso: string): boolean {
@@ -210,12 +171,11 @@ export default function ChatRoomScreen() {
     base64: string;
     mime: string;
   } | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [showGamePicker, setShowGamePicker] = useState(false);
   const [showEmojiSheet, setShowEmojiSheet] = useState(false);
   const [reactionPickerForId, setReactionPickerForId] = useState<string | null>(null);
-  const [useLocalOnly, setUseLocalOnly] = useState(false);
+  const [messagesHydrated, setMessagesHydrated] = useState(false);
   const [receipts, setReceipts] = useState<Record<string, ReceiptStatus>>({});
   const [messageReactions, setMessageReactions] = useState<Record<string, Record<string, number>>>({});
 
@@ -248,66 +208,46 @@ export default function ChatRoomScreen() {
     };
   }, [roomId]);
 
-  useEffect(() => {
-    async function fetchMessages() {
-      try {
-        const { data, error } = await supabase
-          .from('messages')
-          .select('id, room_id, sender_name, content, created_at')
-          .eq('room_id', roomId)
-          .order('created_at', { ascending: true });
-
-        if (error) {
-          setUseLocalOnly(true);
-          setMessages([]);
-          return;
-        }
-        const display = (data ?? []).map((row) => parseMessageRow(row as MessageRow));
-        setMessages(display);
-        if (display.length > 0) {
-          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 50);
-        }
-      } catch {
-        setUseLocalOnly(true);
-        setMessages([]);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    void fetchMessages();
+  useLayoutEffect(() => {
+    setMessages([]);
+    setMessagesHydrated(false);
   }, [roomId]);
 
   useEffect(() => {
-    if (useLocalOnly) return;
-
-    const channel = supabase
-      .channel(`messages:room_id=eq.${roomId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `room_id=eq.${roomId}`,
-        },
-        (payload) => {
-          const newRow = payload.new as MessageRow;
-          setMessages((prev) => {
-            const exists = prev.some((m) => m.id === newRow.id);
-            if (exists) return prev;
-            const next = [...prev, parseMessageRow(newRow)];
-            setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
-            return next;
-          });
+    let cancelled = false;
+    void (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(messagesStorageKey(roomId));
+        if (cancelled) return;
+        if (raw) {
+          const parsed = JSON.parse(raw) as unknown;
+          if (Array.isArray(parsed)) {
+            setMessages(parsed as ChatMessage[]);
+            setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 50);
+          }
         }
-      )
-      .subscribe();
-
+      } catch {
+        /* ignore */
+      } finally {
+        if (!cancelled) setMessagesHydrated(true);
+      }
+    })();
     return () => {
-      supabase.removeChannel(channel);
+      cancelled = true;
     };
-  }, [roomId, useLocalOnly]);
+  }, [roomId]);
+
+  useEffect(() => {
+    if (messagesHydrated) {
+      void AsyncStorage.setItem(messagesStorageKey(roomId), JSON.stringify(messages));
+    }
+    const key = messagesStorageKey(roomId);
+    const snap = messages;
+    const h = messagesHydrated;
+    return () => {
+      if (h) void AsyncStorage.setItem(key, JSON.stringify(snap));
+    };
+  }, [roomId, messages, messagesHydrated]);
 
   useEffect(() => {
     const timeouts: ReturnType<typeof setTimeout>[] = [];
@@ -337,7 +277,7 @@ export default function ChatRoomScreen() {
   }, []);
 
   const submitContent = useCallback(
-    async (content: string, clearComposer: boolean) => {
+    (content: string, clearComposer: boolean) => {
       if (!content || sendLockRef.current) return;
       sendLockRef.current = true;
       setIsSending(true);
@@ -349,124 +289,41 @@ export default function ChatRoomScreen() {
       const createdAt = new Date().toISOString();
 
       try {
-        if (useLocalOnly) {
-          localIdRef.current += 1;
-          const idLocal = `local-${localIdRef.current}`;
-          const rich = tryParseRichPayload(content);
-          let localMsg: ChatMessage;
-          if (rich?.t === 'img') {
-            const p = rich as RichImagePayload;
-            localMsg = {
-              id: idLocal,
-              createdAt,
-              isSent: true,
-              kind: 'image',
-              imageUri: `data:${p.mime};base64,${p.b64}`,
-              caption: p.caption,
-            };
-          } else if (rich?.t === 'invite') {
-            const p = rich as RichInvitePayload;
-            localMsg = {
-              id: idLocal,
-              createdAt,
-              isSent: true,
-              kind: 'invite',
-              gameId: p.gameId,
-              code: p.code,
-            };
-          } else {
-            localMsg = { id: idLocal, createdAt, isSent: true, kind: 'text', text: content };
-          }
-          setMessages((prev) => [...prev, localMsg]);
-          scrollToEndSoon();
-          return;
+        localIdRef.current += 1;
+        const idLocal = `local-${localIdRef.current}`;
+        const rich = tryParseRichPayload(content);
+        let localMsg: ChatMessage;
+        if (rich?.t === 'img') {
+          const p = rich as RichImagePayload;
+          localMsg = {
+            id: idLocal,
+            createdAt,
+            isSent: true,
+            kind: 'image',
+            imageUri: `data:${p.mime};base64,${p.b64}`,
+            caption: p.caption,
+          };
+        } else if (rich?.t === 'invite') {
+          const p = rich as RichInvitePayload;
+          localMsg = {
+            id: idLocal,
+            createdAt,
+            isSent: true,
+            kind: 'invite',
+            gameId: p.gameId,
+            code: p.code,
+          };
+        } else {
+          localMsg = { id: idLocal, createdAt, isSent: true, kind: 'text', text: content };
         }
-
-        const payload = { room_id: roomId, sender_name: SENDER_NAME, content };
-
-        try {
-          const { data, error } = await supabase.from('messages').insert(payload).select('id').single();
-
-          if (error) {
-            setUseLocalOnly(true);
-            localIdRef.current += 1;
-            const idLocal = `local-${localIdRef.current}`;
-            const rich = tryParseRichPayload(content);
-            let localMsg: ChatMessage;
-            if (rich?.t === 'img') {
-              const p = rich as RichImagePayload;
-              localMsg = {
-                id: idLocal,
-                createdAt,
-                isSent: true,
-                kind: 'image',
-                imageUri: `data:${p.mime};base64,${p.b64}`,
-                caption: p.caption,
-              };
-            } else if (rich?.t === 'invite') {
-              const p = rich as RichInvitePayload;
-              localMsg = {
-                id: idLocal,
-                createdAt,
-                isSent: true,
-                kind: 'invite',
-                gameId: p.gameId,
-                code: p.code,
-              };
-            } else {
-              localMsg = { id: idLocal, createdAt, isSent: true, kind: 'text', text: content };
-            }
-            setMessages((prev) => [...prev, localMsg]);
-          } else {
-            const newId = String(data?.id ?? `temp-${Date.now()}`);
-            const rich = tryParseRichPayload(content);
-            let optimistic: ChatMessage;
-            if (rich?.t === 'img') {
-              const p = rich as RichImagePayload;
-              optimistic = {
-                id: newId,
-                createdAt,
-                isSent: true,
-                kind: 'image',
-                imageUri: `data:${p.mime};base64,${p.b64}`,
-                caption: p.caption,
-              };
-            } else if (rich?.t === 'invite') {
-              const p = rich as RichInvitePayload;
-              optimistic = {
-                id: newId,
-                createdAt,
-                isSent: true,
-                kind: 'invite',
-                gameId: p.gameId,
-                code: p.code,
-              };
-            } else {
-              optimistic = { id: newId, createdAt, isSent: true, kind: 'text', text: content };
-            }
-            setMessages((prev) => [...prev, optimistic]);
-          }
-        } catch {
-          setUseLocalOnly(true);
-          localIdRef.current += 1;
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `local-${localIdRef.current}`,
-              createdAt,
-              isSent: true,
-              kind: 'text',
-              text: content,
-            },
-          ]);
-        }
+        setMessages((prev) => [...prev, localMsg]);
         scrollToEndSoon();
       } finally {
         sendLockRef.current = false;
         setIsSending(false);
       }
     },
-    [roomId, scrollToEndSoon, useLocalOnly]
+    [scrollToEndSoon]
   );
 
   const handleSend = useCallback(() => {
@@ -506,11 +363,11 @@ export default function ChatRoomScreen() {
   }, []);
 
   const handlePickChallengeGame = useCallback(
-    async (gameType: string) => {
+    (gameType: string) => {
       setShowGamePicker(false);
       const code = generateRoomCode();
       const body = encodeRichPayload({ t: 'invite', gameId: gameType, code });
-      await submitContent(body, true);
+      submitContent(body, true);
       router.push({
         pathname: '/(tabs)/play/create-room',
         params: {
@@ -683,13 +540,13 @@ export default function ChatRoomScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
-        <View style={[styles.flex, { backgroundColor: palette.background }]}>
+        <View style={[styles.flex, { backgroundColor: palette.background, paddingTop: insets.top }]}>
           <View style={[styles.header, { backgroundColor: palette.card, borderBottomColor: palette.cardBorder }]}>
             <TouchableOpacity
               onPress={() => router.back()}
@@ -710,51 +567,27 @@ export default function ChatRoomScreen() {
           </View>
 
           <View style={[styles.flex, styles.minZero]}>
-            {isLoading ? (
-              <View style={styles.loadingWrap}>
-                <ActivityIndicator size="large" color={palette.tint} />
-              </View>
-            ) : messages.length === 0 ? (
+            {messages.length === 0 ? (
               <View style={styles.emptyWrap}>
-                <View style={styles.emptyAvatarWrap}>
-                  <Avatar initials={initialsForRoomName(roomName)} size="xlarge" />
-                </View>
-                <ThemedText type="heading" style={styles.emptyRoomName}>
-                  {roomName}
+                <Text style={styles.emptyBigEmoji}>💬</Text>
+                <ThemedText type="title" style={styles.emptyTitleCenter}>
+                  No messages yet
                 </ThemedText>
-                <ThemedText type="body" style={[styles.emptyTagline, { color: AppColors.muted }]}>
-                  Be the first to say hello!
+                <ThemedText type="body" style={[styles.emptySubtitle, { color: AppColors.muted }]}>
+                  Say hello and start playing!
                 </ThemedText>
-                <View style={styles.quickActions}>
-                  <Pressable
-                    onPress={() => void submitContent('Hi! 👋', false)}
-                    disabled={isSending}
-                    style={({ pressed }) => [
-                      styles.quickBtn,
-                      { backgroundColor: palette.tint, opacity: pressed ? 0.9 : 1 },
-                    ]}
-                  >
-                    <ThemedText type="caption" style={styles.quickBtnText}>
-                      Say Hi 👋
-                    </ThemedText>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => router.push('/(tabs)/play')}
-                    style={({ pressed }) => [
-                      styles.quickBtn,
-                      styles.quickBtnOutline,
-                      {
-                        borderColor: palette.cardBorder,
-                        backgroundColor: palette.card,
-                        opacity: pressed ? 0.9 : 1,
-                      },
-                    ]}
-                  >
-                    <ThemedText type="caption" style={[styles.quickBtnText, { color: palette.text }]}>
-                      Invite to Game 🎮
-                    </ThemedText>
-                  </Pressable>
-                </View>
+                <Pressable
+                  onPress={() => void submitContent('Hi! 👋', false)}
+                  disabled={isSending}
+                  style={({ pressed }) => [
+                    styles.sayHiBtn,
+                    { backgroundColor: BUBBLE_PURPLE, opacity: pressed ? 0.9 : 1 },
+                  ]}
+                >
+                  <ThemedText type="cardTitle" style={styles.sayHiBtnText}>
+                    Say Hi 👋
+                  </ThemedText>
+                </Pressable>
               </View>
             ) : (
               <ScrollView
@@ -793,9 +626,9 @@ export default function ChatRoomScreen() {
                 </TouchableOpacity>
               </View>
             ) : null}
-            <View style={styles.inputRow}>
+            <View style={[styles.composerRow, { borderColor: COMPOSER_BORDER }]}>
               <TouchableOpacity
-                style={[styles.iconBtn, { backgroundColor: palette.background, borderColor: palette.cardBorder }]}
+                style={[styles.iconBtn, { backgroundColor: INPUT_FILL, borderColor: COMPOSER_BORDER }]}
                 onPress={() => setShowEmojiSheet(true)}
                 hitSlop={8}
                 accessibilityLabel="Emoji"
@@ -803,7 +636,7 @@ export default function ChatRoomScreen() {
                 <Text style={styles.iconBtnEmoji}>😊</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.iconBtn, { backgroundColor: palette.background, borderColor: palette.cardBorder }]}
+                style={[styles.iconBtn, { backgroundColor: INPUT_FILL, borderColor: COMPOSER_BORDER }]}
                 onPress={() => void handlePickImage()}
                 hitSlop={8}
                 accessibilityLabel="Photo library"
@@ -811,7 +644,7 @@ export default function ChatRoomScreen() {
                 <Text style={styles.iconBtnEmoji}>📷</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.iconBtn, { backgroundColor: palette.background, borderColor: palette.cardBorder }]}
+                style={[styles.iconBtn, { backgroundColor: INPUT_FILL, borderColor: COMPOSER_BORDER }]}
                 onPress={() => setShowGamePicker(true)}
                 hitSlop={8}
                 accessibilityLabel="Game challenge"
@@ -819,14 +652,7 @@ export default function ChatRoomScreen() {
                 <Text style={styles.iconBtnEmoji}>🎮</Text>
               </TouchableOpacity>
               <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: palette.background,
-                    borderColor: palette.cardBorder,
-                    color: palette.text,
-                  },
-                ]}
+                style={[styles.input, { backgroundColor: INPUT_FILL, color: palette.text }]}
                 placeholder="Message"
                 placeholderTextColor={palette.tabIconDefault}
                 value={inputText}
@@ -839,9 +665,9 @@ export default function ChatRoomScreen() {
               />
               <TouchableOpacity
                 style={[
-                  styles.sendButton,
+                  styles.sendCircle,
                   {
-                    backgroundColor: hasSendableContent && !isSending ? BUBBLE_PURPLE : INPUT_DISABLED_BG,
+                    backgroundColor: hasSendableContent && !isSending ? SEND_ACTIVE : SEND_DISABLED,
                   },
                 ]}
                 onPress={handleSend}
@@ -851,7 +677,7 @@ export default function ChatRoomScreen() {
                 {isSending ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <MaterialIcons name="send" size={18} color={hasSendableContent ? '#fff' : '#888'} />
+                  <MaterialIcons name="arrow-upward" size={22} color="#FFFFFF" />
                 )}
               </TouchableOpacity>
             </View>
@@ -975,45 +801,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#68D391',
   },
   onlineText: { fontSize: 13 },
-  loadingWrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   emptyWrap: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.md,
   },
-  emptyAvatarWrap: { marginBottom: Spacing.sm },
-  emptyRoomName: {
-    textAlign: 'center',
-    marginBottom: Spacing.xs,
-  },
-  emptyTagline: {
-    textAlign: 'center',
-    marginBottom: Spacing.md,
-  },
-  quickActions: {
-    width: '100%',
-    maxWidth: 320,
-    gap: Spacing.sm,
-  },
-  quickBtn: {
-    height: BUTTON_HEIGHT,
-    borderRadius: 24,
+  emptyBigEmoji: { fontSize: 72, marginBottom: Spacing.md },
+  emptyTitleCenter: { textAlign: 'center', fontWeight: '800', marginBottom: Spacing.sm },
+  emptySubtitle: { textAlign: 'center', marginBottom: Spacing.lg, lineHeight: 22 },
+  sayHiBtn: {
+    minWidth: 220,
+    paddingVertical: 14,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: 14,
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.md,
   },
-  quickBtnOutline: {
-    borderWidth: 1,
-  },
-  quickBtnText: {
-    color: '#fff',
-    fontWeight: '700',
-  },
+  sayHiBtnText: { color: '#fff', fontWeight: '700' },
   messagesScroll: {
     flex: 1,
   },
@@ -1175,17 +979,22 @@ const styles = StyleSheet.create({
   previewClose: {
     marginLeft: 'auto',
   },
-  inputRow: {
+  composerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    gap: 8,
+    minHeight: 52,
+    marginHorizontal: 10,
+    marginVertical: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 26,
   },
   iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1195,17 +1004,17 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     fontSize: 16,
     maxHeight: 100,
+    minHeight: 40,
   },
-  sendButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  sendCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },

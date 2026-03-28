@@ -3,7 +3,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
   cancelAnimation,
@@ -18,7 +18,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { InGameChat } from '@/components/in-game-chat';
 import { HowToPlayButton } from '@/components/how-to-play-button';
+import { useCosmetics } from '@/contexts/cosmetics-context';
 import { ThemedText } from '@/components/themed-text';
 import { WinnerModal } from '@/components/winner-modal';
 import { useTheme } from '@/contexts/theme-context';
@@ -37,6 +39,8 @@ import {
   type Piece,
 } from '@/lib/chess-ai';
 import { moveToAlgebraic } from '@/lib/chess-notation';
+import { getChessBoardColors } from '@/lib/cosmetics/catalog';
+import type { RewardBreakdown } from '@/lib/game-rewards';
 import { recordRecentGame } from '@/lib/recent-games';
 import { playClick, playPop } from '@/lib/sounds';
 
@@ -56,11 +60,11 @@ const PIECE_TO_CDN: Record<string, string> = {
   p: 'bp',
 };
 
-const LIGHT_SQ = '#F0D9B5';
-const DARK_SQ = '#B58863';
 const SELECTED_HIGHLIGHT = '#F6F669';
-const VALID_DOT = 'rgba(34, 197, 94, 0.55)';
-const VALID_RING = 'rgba(74, 222, 128, 0.95)';
+const VALID_DOT = 'rgba(34, 197, 94, 0.78)';
+const VALID_RING = 'rgba(74, 222, 128, 0.98)';
+const LAST_MOVE_LIGHT = 'rgba(147, 197, 253, 0.88)';
+const LAST_MOVE_DARK = 'rgba(59, 130, 246, 0.62)';
 const MOVE_MS = 150;
 const RANK_GUTTER = 22;
 
@@ -143,10 +147,15 @@ function PulsingTurnDot() {
 }
 
 function CheckOverlay({ flash }: { flash: SharedValue<number> }) {
-  const style = useAnimatedStyle(() => ({
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: `rgba(239, 68, 68, ${0.28 + flash.value * 0.5})`,
-  }));
+  const style = useAnimatedStyle(() => {
+    const a = 0.52 + flash.value * 0.44;
+    return {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: `rgba(239, 68, 68, ${a})`,
+      borderWidth: 2,
+      borderColor: `rgba(248, 113, 113, ${0.55 + flash.value * 0.45})`,
+    };
+  });
   return <Animated.View pointerEvents="none" style={style} />;
 }
 
@@ -162,6 +171,8 @@ function ChessSquare({
   capOp,
   showCheckFlash,
   checkFlash,
+  lightSq,
+  darkSq,
   onPress,
 }: {
   sq: number;
@@ -175,16 +186,18 @@ function ChessSquare({
   capOp: SharedValue<number>;
   showCheckFlash: boolean;
   checkFlash: SharedValue<number>;
+  lightSq: string;
+  darkSq: string;
   onPress: () => void;
 }) {
   const dotR = Math.max(8, sq * 0.22);
   const capStyle = useAnimatedStyle(() => ({
     opacity: fadeCapture ? capOp.value : 1,
   }));
-  let bg: string = isLight ? LIGHT_SQ : DARK_SQ;
+  let bg: string = isLight ? lightSq : darkSq;
   if (isSelected) bg = SELECTED_HIGHLIGHT;
   else if (isLastMove) {
-    bg = isLight ? 'rgba(186, 230, 253, 0.78)' : 'rgba(125, 211, 252, 0.42)';
+    bg = isLight ? LAST_MOVE_LIGHT : LAST_MOVE_DARK;
   }
   return (
     <Pressable
@@ -198,31 +211,29 @@ function ChessSquare({
       {showCheckFlash && <CheckOverlay flash={checkFlash} />}
       {isValidTarget &&
         (piece ? (
-          <View
-            style={[
-              styles.validMark,
-              {
+          <View style={styles.validMarkFill} pointerEvents="none">
+            <View
+              style={{
                 width: sq * 0.72,
                 height: sq * 0.72,
                 borderRadius: 999,
                 borderWidth: 3,
                 borderColor: VALID_RING,
-                backgroundColor: 'rgba(34,197,94,0.22)',
-              },
-            ]}
-          />
+                backgroundColor: 'rgba(34,197,94,0.28)',
+              }}
+            />
+          </View>
         ) : (
-          <View
-            style={[
-              styles.validMark,
-              {
+          <View style={styles.validMarkFill} pointerEvents="none">
+            <View
+              style={{
                 width: dotR,
                 height: dotR,
                 borderRadius: dotR / 2,
                 backgroundColor: VALID_DOT,
-              },
-            ]}
-          />
+              }}
+            />
+          </View>
         ))}
       {!hidePiece &&
         piece &&
@@ -276,6 +287,11 @@ export default function ChessScreen() {
 
   const { isDark } = useTheme();
   const palette = isDark ? Colors.dark : Colors.light;
+  const { equipped, rewardGameEnd } = useCosmetics();
+  const { light: lightSq, dark: darkSq } = useMemo(
+    () => getChessBoardColors(equipped.chess_theme),
+    [equipped.chess_theme],
+  );
 
   const [board, setBoard] = useState<Board>(() => INITIAL.map((r) => [...r]));
   const [whiteTurn, setWhiteTurn] = useState(true);
@@ -293,6 +309,7 @@ export default function ChessScreen() {
   const [anim, setAnim] = useState<AnimState | null>(null);
   const [moveHistory, setMoveHistory] = useState<string[]>([]);
   const [undoStack, setUndoStack] = useState<ChessSnapshot[]>([]);
+  const [endRewards, setEndRewards] = useState<RewardBreakdown | null>(null);
 
   const boardRef = useRef(board);
   boardRef.current = board;
@@ -335,8 +352,8 @@ export default function ChessScreen() {
     }
     checkFlash.value = withRepeat(
       withSequence(
-        withTiming(1, { duration: 260, easing: Easing.inOut(Easing.ease) }),
-        withTiming(0, { duration: 260, easing: Easing.inOut(Easing.ease) })
+        withTiming(1, { duration: 220, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0, { duration: 220, easing: Easing.inOut(Easing.ease) })
       ),
       -1,
       true
@@ -608,18 +625,23 @@ export default function ChessScreen() {
   useEffect(() => {
     if (!gameOver) {
       chessRecordedRef.current = false;
+      setEndRewards(null);
       return;
     }
     if (chessRecordedRef.current) return;
     chessRecordedRef.current = true;
     const win = gameOver.includes('White wins');
     const loss = gameOver.includes('Black wins');
+    const draw =
+      gameOver.toLowerCase().includes('draw') || gameOver.toLowerCase().includes('stalemate');
+    const outcome = win ? 'win' : draw ? 'draw' : 'loss';
+    void rewardGameEnd(outcome).then(setEndRewards);
     void recordRecentGame({
       gameName: 'Chess',
       result: win ? 'win' : 'loss',
       score: win ? 'Checkmate' : loss ? 'Checkmated' : 'Stalemate',
     });
-  }, [gameOver]);
+  }, [gameOver, rewardGameEnd]);
 
   const moveLabel = Math.floor(halfmove / 2) + 1;
   const lastTenMoves = moveHistory.slice(-10);
@@ -629,8 +651,8 @@ export default function ChessScreen() {
 
   if (difficulty === null) {
     return (
-      <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top']}>
-        <View style={[styles.container, { paddingBottom: insets.bottom + 12 }]}>
+      <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['bottom', 'left', 'right']}>
+        <View style={[styles.container, { paddingTop: insets.top, paddingBottom: 12 }]}>
           <View style={styles.diffHeader}>
             <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
               <MaterialIcons name="arrow-back" size={24} color={palette.text} />
@@ -638,6 +660,7 @@ export default function ChessScreen() {
             <ThemedText type="title" style={{ flex: 1 }}>
               Chess
             </ThemedText>
+            <InGameChat selfName="You" opponentName="Opponent" opponentIsAi />
             <HowToPlayButton gameId="chess" tint={palette.text} />
           </View>
           <ThemedText type="section" style={[styles.diffTitle, { color: palette.text }]}>
@@ -686,8 +709,8 @@ export default function ChessScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top']}>
-      <View style={[styles.container, { paddingBottom: insets.bottom + 8 }]}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['bottom', 'left', 'right']}>
+      <View style={[styles.container, { paddingTop: insets.top, paddingBottom: 8 }]}>
         <View style={styles.gameHeader}>
           <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
             <MaterialIcons name="arrow-back" size={24} color={palette.text} />
@@ -695,6 +718,7 @@ export default function ChessScreen() {
           <ThemedText type="section" style={{ flex: 1, color: palette.text }}>
             Chess
           </ThemedText>
+          <InGameChat selfName="You" opponentName="Opponent" opponentIsAi />
           <HowToPlayButton gameId="chess" tint={palette.text} />
           <View style={[styles.diffPill, { backgroundColor: palette.tint }]}>
             <Text style={styles.diffPillText}>{diffLabel}</Text>
@@ -822,6 +846,8 @@ export default function ChessScreen() {
                         capOp={capOp}
                         showCheckFlash={kingFlash}
                         checkFlash={checkFlash}
+                        lightSq={lightSq}
+                        darkSq={darkSq}
                         onPress={() => handleSquarePress(rowIdx, colIdx)}
                       />
                     );
@@ -888,6 +914,7 @@ export default function ChessScreen() {
         winnerName={gameOver?.replace(' wins!', '') ?? ''}
         score={{ wins, losses }}
         subtitle={gameOver?.includes('Draw') ? 'Stalemate' : 'Checkmate!'}
+        rewards={endRewards}
         onPlayAgain={handleRestart}
       />
     </SafeAreaView>
@@ -1034,9 +1061,10 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 10,
   },
-  validMark: {
-    position: 'absolute',
-    alignSelf: 'center',
+  validMarkFill: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pieceWrap: {
     ...StyleSheet.absoluteFillObject,

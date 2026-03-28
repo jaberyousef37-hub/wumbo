@@ -2,7 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useProfile } from '@/contexts/profile-context';
 import { useTheme } from '@/contexts/theme-context';
@@ -29,7 +29,8 @@ export default function ProfileSetupScreen() {
   const isValid = name.trim().length > 0 && username.trim().length > 0;
 
   return (
-    <View style={[styles.container, { backgroundColor: palette.background }]}>
+    <SafeAreaView style={styles.safeRoot} edges={['bottom', 'left', 'right']}>
+      <View style={[styles.container, { backgroundColor: palette.background, paddingTop: insets.top }]}>
       <LinearGradient
         colors={[palette.background, palette.card]}
         style={StyleSheet.absoluteFill}
@@ -62,7 +63,7 @@ export default function ProfileSetupScreen() {
           />
         </ScrollView>
 
-        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 24) }]}>
+        <View style={[styles.footer, { paddingBottom: 24 }]}>
           <Pressable
             onPress={handleContinue}
             disabled={!isValid}
@@ -79,11 +80,13 @@ export default function ProfileSetupScreen() {
           </Pressable>
         </View>
       </View>
-    </View>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeRoot: { flex: 1 },
   container: { flex: 1 },
   body: {
     flex: 1,

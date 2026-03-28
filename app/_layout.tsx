@@ -3,8 +3,11 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { LevelUpHost } from '@/components/level-up-host';
 import { AuthProvider } from '@/contexts/auth-context';
+import { CosmeticsProvider } from '@/contexts/cosmetics-context';
 import { OnboardingProvider } from '@/contexts/onboarding-context';
 import { ProfileProvider } from '@/contexts/profile-context';
 import { ThemeProvider } from '@/contexts/theme-context';
@@ -45,14 +48,19 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <ThemeProvider>
-      <OnboardingProvider>
-        <ProfileProvider>
-          <AuthProvider>
-            <ThemedStack />
-          </AuthProvider>
-        </ProfileProvider>
-      </OnboardingProvider>
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <OnboardingProvider>
+          <ProfileProvider>
+            <CosmeticsProvider>
+              <LevelUpHost />
+              <AuthProvider>
+                <ThemedStack />
+              </AuthProvider>
+            </CosmeticsProvider>
+          </ProfileProvider>
+        </OnboardingProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }

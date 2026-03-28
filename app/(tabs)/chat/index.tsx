@@ -1,57 +1,34 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
 import { BaseCard } from '@/components/base-card';
 import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/contexts/theme-context';
-import { Colors } from '@/constants/theme';
+import { AppColors, Colors } from '@/constants/theme';
 import {
   CARD_GAP,
   SECTION_GAP,
   SCREEN_PADDING,
   Spacing,
 } from '@/constants/spacing';
-import {
-  FAKE_FRIENDS,
-  FAKE_PENDING_REQUESTS,
-  type Friend,
-  type FriendRequest,
-} from '@/lib/friends-data';
+import { FAKE_FRIENDS, type Friend, type FriendRequest } from '@/lib/friends-data';
 import { CHALLENGE_GAME_PICKS } from '@/lib/challenge-games';
 import { generateRoomCode } from '@/lib/room-utils';
 import { ICON_SIZE_CARD, ICON_SIZE_NAV } from '@/constants/typography';
 
-const CONVERSATIONS = [
-  {
-    id: '1',
-    name: 'Alex Rivera',
-    lastMessage: 'Trivia rematch tonight?',
-    timestamp: '2m ago',
-    unreadCount: 3,
-    isGameInvite: true,
-  },
-  {
-    id: '2',
-    name: 'Sam Okonkwo',
-    lastMessage: 'Room code 9174 — I’m in!',
-    timestamp: '1h ago',
-    unreadCount: 0,
-    isGameInvite: true,
-  },
-  {
-    id: '3',
-    name: 'Jordan & Riley',
-    lastMessage: "Who's down for UNO?",
-    timestamp: '5m ago',
-    unreadCount: 12,
-    isGameInvite: true,
-  },
-];
+const CONVERSATIONS: {
+  id: string;
+  name: string;
+  lastMessage: string;
+  timestamp: string;
+  unreadCount: number;
+  isGameInvite: boolean;
+}[] = [];
 
 type Tab = 'chats' | 'friends';
 
@@ -360,12 +337,13 @@ function ChallengeGameModal({
 
 export default function ChatScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<Tab>('chats');
   const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
   const [showFriendOptions, setShowFriendOptions] = useState(false);
   const [showChallengeModal, setShowChallengeModal] = useState(false);
   const [challengeRecipient, setChallengeRecipient] = useState<string | null>(null);
-  const [pendingRequests, setPendingRequests] = useState(FAKE_PENDING_REQUESTS);
+  const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>([]);
   const { isDark } = useTheme();
   const palette = isDark ? Colors.dark : Colors.light;
 
@@ -394,8 +372,8 @@ export default function ChatScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top']}>
-      <Animated.View entering={FadeIn.duration(400)} style={styles.container}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['bottom', 'left', 'right']}>
+      <Animated.View entering={FadeIn.duration(400)} style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.header}>
           <View style={styles.headerTitles}>
             <ThemedText type="title" style={styles.headerTitle}>
@@ -478,9 +456,27 @@ export default function ChatScreen() {
 
         {activeTab === 'chats' ? (
           <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-            {CONVERSATIONS.map((room, index) => (
-              <ChatRoomCard key={room.id} room={room} index={index} />
-            ))}
+            {CONVERSATIONS.length === 0 ? (
+              <View style={styles.emptyWrap}>
+                <Text style={styles.emptyEmoji}>💬</Text>
+                <ThemedText type="title" style={styles.emptyTitle}>
+                  No messages yet
+                </ThemedText>
+                <ThemedText type="body" style={[styles.emptySub, { color: palette.icon }]}>
+                  Say hello and start playing!
+                </ThemedText>
+                <Pressable
+                  onPress={() => router.push('/(tabs)/chat/add-friend')}
+                  style={({ pressed }) => [styles.emptyCta, pressed && { opacity: 0.9 }]}
+                >
+                  <ThemedText type="cardTitle" style={styles.emptyCtaText}>
+                    Say Hi 👋
+                  </ThemedText>
+                </Pressable>
+              </View>
+            ) : (
+              CONVERSATIONS.map((room, index) => <ChatRoomCard key={room.id} room={room} index={index} />)
+            )}
           </ScrollView>
         ) : (
           <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
@@ -518,17 +514,37 @@ export default function ChatScreen() {
                   </ThemedText>
                 </Pressable>
               </View>
-              {FAKE_FRIENDS.map((friend, index) => (
-                <FriendCard
-                  key={friend.id}
-                  friend={friend}
-                  index={index}
-                  onPress={() => {
-                    setSelectedFriend(friend);
-                    setShowFriendOptions(true);
-                  }}
-                />
-              ))}
+              {FAKE_FRIENDS.length === 0 ? (
+                <View style={styles.emptyWrap}>
+                  <Text style={styles.emptyEmoji}>👥</Text>
+                  <ThemedText type="title" style={styles.emptyTitle}>
+                    No friends yet
+                  </ThemedText>
+                  <ThemedText type="body" style={[styles.emptySub, { color: palette.icon }]}>
+                    Find people to chat and challenge.
+                  </ThemedText>
+                  <Pressable
+                    onPress={() => router.push('/(tabs)/chat/add-friend')}
+                    style={({ pressed }) => [styles.emptyCta, pressed && { opacity: 0.9 }]}
+                  >
+                    <ThemedText type="cardTitle" style={styles.emptyCtaText}>
+                      Find players
+                    </ThemedText>
+                  </Pressable>
+                </View>
+              ) : (
+                FAKE_FRIENDS.map((friend, index) => (
+                  <FriendCard
+                    key={friend.id}
+                    friend={friend}
+                    index={index}
+                    onPress={() => {
+                      setSelectedFriend(friend);
+                      setShowFriendOptions(true);
+                    }}
+                  />
+                ))
+              )}
             </View>
           </ScrollView>
         )}
@@ -836,6 +852,25 @@ const styles = StyleSheet.create({
   notifActionBtnPressed: { opacity: 0.9 },
   notifActionText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   notifEmpty: { textAlign: 'center', marginTop: Spacing.lg, fontSize: 16 },
+  emptyWrap: {
+    alignItems: 'center',
+    paddingVertical: Spacing.lg + Spacing.md,
+    paddingHorizontal: Spacing.md,
+    gap: Spacing.sm,
+  },
+  emptyEmoji: { fontSize: 64, marginBottom: Spacing.xs },
+  emptyTitle: { textAlign: 'center', fontWeight: '800' },
+  emptySub: { textAlign: 'center', lineHeight: 22 },
+  emptyCta: {
+    marginTop: Spacing.md,
+    backgroundColor: AppColors.tint,
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 14,
+    minWidth: 200,
+    alignItems: 'center',
+  },
+  emptyCtaText: { color: '#fff', fontWeight: '700' },
   modalInput: {
     borderWidth: 1,
     borderRadius: 12,

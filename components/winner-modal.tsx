@@ -12,15 +12,18 @@ import Animated, {
 
 import { ConfettiEmoji } from '@/components/confetti-emoji';
 import { ConfettiView } from '@/components/confetti-view';
+import { GameResultsSummary } from '@/components/game-results-summary';
 import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/contexts/theme-context';
 import { Colors } from '@/constants/theme';
+import type { RewardBreakdown } from '@/lib/game-rewards';
 
 type WinnerModalProps = {
   visible: boolean;
   winnerName: string;
   score?: { wins: number; losses: number };
   subtitle?: string;
+  rewards?: RewardBreakdown | null;
   onPlayAgain: () => void;
   onConfettiComplete?: () => void;
 };
@@ -30,6 +33,7 @@ export function WinnerModal({
   winnerName,
   score,
   subtitle,
+  rewards,
   onPlayAgain,
   onConfettiComplete,
 }: WinnerModalProps) {
@@ -93,6 +97,9 @@ export function WinnerModal({
                     </View>
                   </View>
                 )}
+                {rewards != null && rewards.xpAdded + rewards.coinsAdded > 0 ? (
+                  <GameResultsSummary rewards={rewards} />
+                ) : null}
                 <Pressable
                   onPress={onPlayAgain}
                   style={styles.playAgainBtn}

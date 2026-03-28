@@ -6,10 +6,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PanResponder, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { GameResultsSummary } from '@/components/game-results-summary';
 import { HowToPlayButton } from '@/components/how-to-play-button';
 import { PrimaryButton } from '@/components/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { AppColors } from '@/constants/theme';
+import { useCosmetics } from '@/contexts/cosmetics-context';
+import type { RewardBreakdown } from '@/lib/game-rewards';
 import { recordRecentGame } from '@/lib/recent-games';
 import { playClick } from '@/lib/sounds';
 
@@ -55,6 +58,7 @@ const CONTROLS_RESERVE = 168;
 
 export default function SnakeScreen() {
   const router = useRouter();
+  const { rewardGameEnd } = useCosmetics();
   const insets = useSafeAreaInsets();
   const { width: winW, height: winH } = useWindowDimensions();
 
@@ -75,6 +79,7 @@ export default function SnakeScreen() {
   const [direction, setDirection] = useState<Dir>('right');
   const [nextDirection, setNextDirection] = useState<Dir>('right');
   const [gameOver, setGameOver] = useState(false);
+  const [endRewards, setEndRewards] = useState<RewardBreakdown | null>(null);
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
   const [playing, setPlaying] = useState(true);
@@ -184,17 +189,20 @@ export default function SnakeScreen() {
   useEffect(() => {
     if (!gameOver) {
       snakeRecordedRef.current = false;
+      setEndRewards(null);
       return;
     }
     if (snakeRecordedRef.current) return;
     snakeRecordedRef.current = true;
     const beatBest = score > highScore;
+    const outcome = beatBest ? 'win' : 'loss';
+    void rewardGameEnd(outcome).then(setEndRewards);
     void recordRecentGame({
       gameName: 'Snake',
       result: beatBest ? 'win' : 'loss',
       score: `${score} pts`,
     });
-  }, [gameOver, score, highScore]);
+  }, [gameOver, score, highScore, rewardGameEnd]);
 
   const handleRestart = useCallback(() => {
     const s0 = makeInitialSnake(mid);
@@ -204,6 +212,7 @@ export default function SnakeScreen() {
     setNextDirection('right');
     directionRef.current = 'right';
     setGameOver(false);
+    setEndRewards(null);
     setScore(0);
     setPlaying(true);
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -238,8 +247,8 @@ export default function SnakeScreen() {
   const speedLevel = 1 + Math.min(15, Math.floor((INITIAL_SPEED - speedMs) / SPEED_DECREMENT) + 1);
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: BG_DARK }]} edges={['top', 'bottom']}>
-      <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: BG_DARK }]} edges={['bottom', 'left', 'right']}>
+      <View style={[styles.container, { paddingTop: insets.top, paddingBottom: 8 }]}>
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
             <MaterialIcons name="arrow-back" size={24} color="#fff" />
@@ -291,6 +300,9 @@ export default function SnakeScreen() {
           <View style={styles.gameOverWrap}>
             <ThemedText style={styles.gameOverText}>Game Over!</ThemedText>
             <ThemedText style={styles.gameOverScore}>Score: {score}</ThemedText>
+            {endRewards != null && endRewards.xpAdded + endRewards.coinsAdded > 0 ? (
+              <GameResultsSummary rewards={endRewards} compact />
+            ) : null}
             <PrimaryButton label="Play Again" onPress={handleRestart} style={styles.restartBtn} />
           </View>
         )}
@@ -380,6 +392,8 @@ const styles = StyleSheet.create({
   gameOverWrap: {
     position: 'absolute',
     top: '35%',
+    left: 20,
+    right: 20,
     alignItems: 'center',
     padding: 24,
     backgroundColor: 'rgba(0,0,0,0.8)',

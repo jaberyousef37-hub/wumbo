@@ -12,21 +12,27 @@ import {
   View,
 } from 'react-native';
 import Animated, {
+  Easing,
   FadeIn,
   FadeOut,
-  SlideInDown,
+  SlideInLeft,
   SlideInUp,
   useAnimatedStyle,
   useSharedValue,
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { InGameChat } from '@/components/in-game-chat';
 import { HowToPlayButton } from '@/components/how-to-play-button';
+import { useCosmetics } from '@/contexts/cosmetics-context';
 import { ThemedText } from '@/components/themed-text';
 import { AppColors } from '@/constants/theme';
 import { Spacing } from '@/constants/spacing';
+import { getUnoSkinVisual, type UnoSkinVisual } from '@/lib/cosmetics/catalog';
+import { GameResultsSummary } from '@/components/game-results-summary';
+import type { RewardBreakdown } from '@/lib/game-rewards';
 import { recordRecentGame } from '@/lib/recent-games';
 import { playSwoosh } from '@/lib/sounds';
 import {
@@ -47,17 +53,12 @@ import {
   type UnoSuit,
 } from '@/lib/uno';
 
-const FELT = '#0f4d35';
-const FELT_RIM = '#063822';
-
 const SUIT_HEX: Record<UnoSuit, string> = {
   red: '#E53935',
   blue: '#1E88E5',
   green: '#2ECC71',
   yellow: '#FFD54F',
 };
-
-const CARD_BACK = '#0d3d28';
 
 function cardLabel(card: UnoCard): string {
   switch (card.type) {
@@ -92,18 +93,30 @@ function CardFace({
   w,
   h,
   small,
+  skin,
 }: {
   card: UnoCard;
   w: number;
   h: number;
   small?: boolean;
+  skin: UnoSkinVisual;
 }) {
   const isWild = card.type === 'wild' || card.type === 'wild_draw4';
-  const bg = isWild ? '#111' : card.color ? SUIT_HEX[card.color] : '#333';
+  const bg = isWild ? skin.wildBg : card.color ? SUIT_HEX[card.color] : '#333';
   const ovalBg = isWild ? '#222' : '#fff';
+  const glow =
+    skin.faceGlow !== 'transparent'
+      ? {
+          shadowColor: skin.faceGlow,
+          shadowOpacity: 0.55,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 0 },
+          elevation: 6,
+        }
+      : {};
 
   return (
-    <View style={[styles.cardFace, { width: w, height: h, backgroundColor: bg }]}>
+    <View style={[styles.cardFace, { width: w, height: h, backgroundColor: bg }, glow]}>
       {isWild && (
         <View style={styles.wildStripeRow}>
           {(['red', 'yellow', 'green', 'blue'] as const).map((c) => (
@@ -120,10 +133,37 @@ function CardFace({
   );
 }
 
-function CardBackFace({ w, h, small }: { w: number; h: number; small?: boolean }) {
+function CardBackFace({
+  w,
+  h,
+  small,
+  skin,
+}: {
+  w: number;
+  h: number;
+  small?: boolean;
+  skin: UnoSkinVisual;
+}) {
   return (
-    <View style={[styles.cardFace, styles.cardBackOuter, { width: w, height: h }]}>
-      <View style={[StyleSheet.absoluteFill, styles.cardBackInner]} />
+    <View
+      style={[
+        styles.cardFace,
+        styles.cardBackOuter,
+        {
+          width: w,
+          height: h,
+          backgroundColor: skin.cardBack,
+          borderColor: skin.cardBackBorder,
+        },
+      ]}
+    >
+      <View
+        style={[
+          StyleSheet.absoluteFill,
+          styles.cardBackInner,
+          { backgroundColor: 'rgba(0,0,0,0.38)' },
+        ]}
+      />
       <Text style={[styles.unoBackText, small && styles.unoBackTextSm]}>UNO</Text>
     </View>
   );
@@ -134,11 +174,13 @@ function OpponentZone({
   count,
   isTurn,
   align,
+  skin,
 }: {
   name: string;
   count: number;
   isTurn: boolean;
   align: 'center' | 'flex-start';
+  skin: UnoSkinVisual;
 }) {
   const n = count;
   const spread = Math.min(5.5, 48 / Math.max(n, 1));
@@ -164,7 +206,7 @@ function OpponentZone({
                 { marginLeft: i === 0 ? 0 : overlap, transform: [{ rotate: `${rot}deg` }] },
               ]}
             >
-              <CardBackFace w={44} h={64} small />
+              <CardBackFace w={44} h={64} small skin={skin} />
             </View>
           );
         })}
@@ -181,6 +223,7 @@ function HandCard({
   onPress,
   index,
   total,
+  skin,
 }: {
   card: UnoCard;
   playable: boolean;
@@ -189,6 +232,7 @@ function HandCard({
   onPress: () => void;
   index: number;
   total: number;
+  skin: UnoSkinVisual;
 }) {
   const w = 60;
   const h = 88;
@@ -205,7 +249,7 @@ function HandCard({
             styles.handCardWrap,
             {
               marginLeft: overlap,
-              opacity: dimmed ? 0.5 : 1,
+              opacity: dimmed ? 0.4 : 1,
               transform: [
                 { rotate: `${rot}deg` },
                 { translateY: pressed && playable ? -12 : playable ? -3 : 0 },
@@ -216,10 +260,12 @@ function HandCard({
           <View
             style={[
               playable && styles.playableRing,
-              { shadowColor: playable ? AppColors.yellow : 'transparent' },
+              {
+                shadowColor: playable ? '#FDE047' : 'transparent',
+              },
             ]}
           >
-            <CardFace card={card} w={w} h={h} />
+            <CardFace card={card} w={w} h={h} skin={skin} />
           </View>
         </Animated.View>
       )}
@@ -229,13 +275,16 @@ function HandCard({
 
 export default function UnoScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [difficulty, setDifficulty] = useState<UnoDifficulty>('medium');
-  const [game, setGame] = useState<UnoGameState>(() => createInitialGame('medium'));
+  const [numPlayers, setNumPlayers] = useState<2 | 3>(3);
+  const [game, setGame] = useState<UnoGameState>(() => createInitialGame('medium', 3));
   const [wins, setWins] = useState(0);
   const [losses, setLosses] = useState(0);
   const [turnBanner, setTurnBanner] = useState<string | null>(null);
   const [discardAnim, setDiscardAnim] = useState<'up' | 'down'>('down');
   const [unoPop, setUnoPop] = useState(false);
+  const [endRewards, setEndRewards] = useState<RewardBreakdown | null>(null);
   const scoredRef = useRef(false);
   const recordedRecentRef = useRef(false);
   const prevTopId = useRef<string | undefined>(undefined);
@@ -243,6 +292,8 @@ export default function UnoScreen() {
   const skipFirstDiscardAnim = useRef(true);
   const prevPlayerCount = useRef(game.hands[0].length);
   const drawPulse = useSharedValue(1);
+  const { equipped, rewardGameEnd } = useCosmetics();
+  const skin = useMemo(() => getUnoSkinVisual(equipped.uno_skin), [equipped.uno_skin]);
 
   const top = useMemo(() => topCard(game), [game]);
   const playable = useMemo(() => {
@@ -326,7 +377,9 @@ export default function UnoScreen() {
   }, [game.currentTurn, game.winner, game.wildPicker]);
 
   useEffect(() => {
-    if (game.winner != null || (game.currentTurn !== 1 && game.currentTurn !== 2) || game.wildPicker === 0) {
+    const aiSeat =
+      game.currentTurn === 1 || (game.numPlayers === 3 && game.currentTurn === 2);
+    if (game.winner != null || !aiSeat || game.wildPicker === 0) {
       return;
     }
     const t = setTimeout(() => {
@@ -345,6 +398,7 @@ export default function UnoScreen() {
     game.activeColor,
     game.drawStack,
     game.aiDifficulty,
+    game.numPlayers,
   ]);
 
   useEffect(() => {
@@ -356,6 +410,8 @@ export default function UnoScreen() {
       }
       if (!recordedRecentRef.current) {
         recordedRecentRef.current = true;
+        const outcome = game.winner === 0 ? 'win' : 'loss';
+        void rewardGameEnd(outcome).then(setEndRewards);
         void recordRecentGame({
           gameName: 'UNO',
           result: game.winner === 0 ? 'win' : 'loss',
@@ -365,13 +421,25 @@ export default function UnoScreen() {
     } else {
       scoredRef.current = false;
       recordedRecentRef.current = false;
+      setEndRewards(null);
     }
-  }, [game.winner]);
+  }, [game.winner, rewardGameEnd]);
 
   const setDifficultyAndGame = useCallback((d: UnoDifficulty) => {
     setDifficulty(d);
     setGame((g) => ({ ...g, aiDifficulty: d }));
   }, []);
+
+  const setNumPlayersAndReset = useCallback(
+    (n: 2 | 3) => {
+      setNumPlayers(n);
+      scoredRef.current = false;
+      recordedRecentRef.current = false;
+      skipFirstDiscardAnim.current = true;
+      setGame(createInitialGame(difficulty, n));
+    },
+    [difficulty],
+  );
 
   const handlePlay = useCallback(
     (card: UnoCard) => {
@@ -414,17 +482,18 @@ export default function UnoScreen() {
   const playAgain = useCallback(() => {
     scoredRef.current = false;
     recordedRecentRef.current = false;
+    setEndRewards(null);
     skipFirstDiscardAnim.current = true;
-    setGame(createInitialGame(difficulty));
-  }, [difficulty]);
+    setGame(createInitialGame(difficulty, numPlayers));
+  }, [difficulty, numPlayers]);
 
   const glow = discardGlowColor(top, game.activeColor);
   const pendingWd4 = top?.type === 'wild_draw4';
   const drawDisabled = game.drawStack === 0 && playable.length > 0;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.felt}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: skin.felt }]} edges={['bottom', 'left', 'right']}>
+      <View style={[styles.felt, { backgroundColor: skin.felt, paddingTop: insets.top }]}>
         <LinearGradient
           colors={[AppColors.tint, AppColors.accent, AppColors.yellow]}
           start={{ x: 0, y: 0 }}
@@ -437,6 +506,7 @@ export default function UnoScreen() {
           <ThemedText type="defaultSemiBold" style={styles.headerTitle} darkColor="#fff">
             UNO
           </ThemedText>
+          <InGameChat selfName="You" opponentName="Opponents" opponentIsAi />
           <HowToPlayButton gameId="uno" tint="#fff" />
         </LinearGradient>
 
@@ -454,18 +524,44 @@ export default function UnoScreen() {
           ))}
         </View>
 
-        <View style={styles.colorRow}>
-          <Text style={styles.colorRowLabel}>Color</Text>
-          {(['red', 'blue', 'green', 'yellow'] as const).map((c) => (
-            <View
-              key={c}
-              style={[
-                styles.colorDot,
-                { backgroundColor: SUIT_HEX[c] },
-                game.activeColor === c && styles.colorDotActive,
-              ]}
-            />
+        <View style={styles.playersRow}>
+          <Text style={styles.playersRowLabel}>Players</Text>
+          {([2, 3] as const).map((n) => (
+            <Pressable
+              key={n}
+              onPress={() => setNumPlayersAndReset(n)}
+              style={[styles.diffChip, numPlayers === n && styles.diffChipOn]}
+            >
+              <Text style={[styles.diffChipText, numPlayers === n && styles.diffChipTextOn]}>
+                {n === 2 ? '2 (1 AI)' : '3 (2 AI)'}
+              </Text>
+            </Pressable>
           ))}
+        </View>
+
+        <View style={styles.activeColorBanner}>
+          <Text style={styles.activeColorLabel}>Active color</Text>
+          <View
+            style={[
+              styles.activeColorOrb,
+              {
+                backgroundColor: SUIT_HEX[game.activeColor],
+                borderColor: '#fff',
+              },
+            ]}
+          />
+          <View style={styles.colorMiniRow}>
+            {(['red', 'blue', 'green', 'yellow'] as const).map((c) => (
+              <View
+                key={c}
+                style={[
+                  styles.colorDotSmall,
+                  { backgroundColor: SUIT_HEX[c] },
+                  game.activeColor === c && styles.colorDotSmallOn,
+                ]}
+              />
+            ))}
+          </View>
         </View>
 
         {game.drawStack > 0 && (
@@ -499,13 +595,18 @@ export default function UnoScreen() {
           </Animated.View>
         )}
 
-        <View style={styles.table}>
-          <OpponentZone
-            name={UNO_NAMES[2]}
-            count={game.hands[2].length}
-            isTurn={game.currentTurn === 2}
-            align="center"
-          />
+        <View style={[styles.table, { backgroundColor: skin.feltRim }]}>
+          {game.numPlayers === 3 ? (
+            <OpponentZone
+              name={UNO_NAMES[2]}
+              count={game.hands[2].length}
+              isTurn={game.currentTurn === 2}
+              align="center"
+              skin={skin}
+            />
+          ) : (
+            <View style={styles.oppSpacer} />
+          )}
 
           <View style={styles.midRow}>
             <OpponentZone
@@ -513,10 +614,11 @@ export default function UnoScreen() {
               count={game.hands[1].length}
               isTurn={game.currentTurn === 1}
               align="flex-start"
+              skin={skin}
             />
             <View style={styles.centerPiles}>
               <View style={styles.pileCol}>
-                <CardBackFace w={52} h={76} />
+                <CardBackFace w={52} h={76} skin={skin} />
                 <View style={styles.deckCount}>
                   <Text style={styles.deckCountText}>{approxDeckLeft}</Text>
                 </View>
@@ -541,11 +643,11 @@ export default function UnoScreen() {
                       key={top.id}
                       entering={
                         discardAnim === 'up'
-                          ? SlideInUp.duration(320).springify().damping(16).stiffness(200)
-                          : SlideInDown.duration(320).springify().damping(16).stiffness(200)
+                          ? SlideInUp.duration(420).easing(Easing.out(Easing.cubic))
+                          : SlideInLeft.duration(420).easing(Easing.out(Easing.cubic))
                       }
                     >
-                      <CardFace card={top} w={80} h={114} />
+                      <CardFace card={top} w={80} h={114} skin={skin} />
                     </Animated.View>
                   ) : null}
                 </Animated.View>
@@ -598,6 +700,7 @@ export default function UnoScreen() {
                     onPress={() => handlePlay(card)}
                     index={index}
                     total={game.hands[0].length}
+                    skin={skin}
                   />
                 );
               })}
@@ -652,6 +755,9 @@ export default function UnoScreen() {
             <Text style={styles.endSub}>
               Session · You {wins} — Losses {losses}
             </Text>
+            {endRewards != null && endRewards.xpAdded + endRewards.coinsAdded > 0 ? (
+              <GameResultsSummary rewards={endRewards} compact />
+            ) : null}
             <Pressable onPress={playAgain} style={styles.playAgain}>
               <LinearGradient
                 colors={[AppColors.accent, AppColors.yellow]}
@@ -673,8 +779,8 @@ export default function UnoScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: FELT },
-  felt: { flex: 1, backgroundColor: FELT },
+  safe: { flex: 1 },
+  felt: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -707,25 +813,47 @@ const styles = StyleSheet.create({
   },
   diffChipText: { color: 'rgba(255,255,255,0.75)', fontWeight: '700', fontSize: 12 },
   diffChipTextOn: { color: '#fff' },
-  colorRow: {
+  playersRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    marginTop: 10,
+    gap: 8,
+    marginTop: 8,
+    paddingHorizontal: Spacing.md,
   },
-  colorRowLabel: { color: 'rgba(255,255,255,0.8)', fontWeight: '700', fontSize: 13 },
-  colorDot: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+  playersRowLabel: { color: 'rgba(255,255,255,0.75)', fontWeight: '700', fontSize: 12, marginRight: 4 },
+  activeColorBanner: {
+    marginHorizontal: Spacing.md,
+    marginTop: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.38)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    gap: 8,
+  },
+  activeColorLabel: { color: 'rgba(255,255,255,0.85)', fontWeight: '800', fontSize: 12, letterSpacing: 0.5 },
+  activeColorOrb: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 3,
+  },
+  colorMiniRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  colorDotSmall: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     borderWidth: 2,
     borderColor: 'transparent',
   },
-  colorDotActive: {
+  colorDotSmallOn: {
     borderColor: '#fff',
-    transform: [{ scale: 1.15 }],
+    transform: [{ scale: 1.2 }],
   },
+  oppSpacer: { height: 8 },
   stackBanner: {
     marginHorizontal: Spacing.md,
     marginTop: 8,
@@ -754,7 +882,6 @@ const styles = StyleSheet.create({
     flex: 1,
     marginHorizontal: 10,
     marginBottom: 12,
-    backgroundColor: FELT_RIM,
     borderRadius: 28,
     borderWidth: 2,
     borderColor: 'rgba(0,0,0,0.25)',
@@ -841,11 +968,12 @@ const styles = StyleSheet.create({
   playableRing: {
     borderRadius: 14,
     borderWidth: 3,
-    borderColor: AppColors.yellow,
+    borderColor: '#FDE047',
+    shadowColor: '#FACC15',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.95,
-    shadowRadius: 14,
-    elevation: 12,
+    shadowOpacity: 1,
+    shadowRadius: 16,
+    elevation: 14,
   },
   unoPop: {
     marginBottom: 6,
@@ -864,11 +992,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   cardBackOuter: {
-    backgroundColor: CARD_BACK,
     borderColor: 'rgba(255,255,255,0.5)',
   },
   cardBackInner: {
-    backgroundColor: '#0a3020',
     margin: 4,
     borderRadius: 8,
   },

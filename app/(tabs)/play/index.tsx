@@ -1,5 +1,6 @@
 import type { Href } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
@@ -19,6 +20,8 @@ import { CARD_GAP, CARD_PADDING, SECTION_GAP, Spacing } from '@/constants/spacin
 
 const BG = AppColors.background;
 const ACCENT = AppColors.tint;
+const CARD_DARK = '#1a1a1a';
+const CARD_ELEV = '#2a2a2a';
 
 type SectionId = 'card' | 'board' | 'party' | 'solo';
 
@@ -182,9 +185,16 @@ function GameCard({
           </Pressable>
           <Pressable
             onPress={() => router.push('/(tabs)/play/create-room' as Href)}
-            style={({ pressed }) => [styles.btnMulti, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.btnMultiWrap, pressed && styles.pressed]}
           >
-            <Text style={styles.btnMultiText}>Multiplayer</Text>
+            <LinearGradient
+              colors={[ACCENT, '#9333EA']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.btnMultiGrad}
+            >
+              <Text style={styles.btnMultiText}>Multiplayer</Text>
+            </LinearGradient>
           </Pressable>
         </View>
       </View>
@@ -329,8 +339,8 @@ const styles = StyleSheet.create({
   gameCard: {
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: AppColors.cardBorder,
-    backgroundColor: AppColors.card,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: CARD_DARK,
     overflow: 'hidden',
   },
   cardTopRow: {
@@ -343,11 +353,11 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 16,
-    backgroundColor: 'rgba(124, 58, 237, 0.12)',
+    backgroundColor: CARD_ELEV,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(124, 58, 237, 0.35)',
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   cardTitleCol: { flex: 1, minWidth: 0 },
   nameRow: {
@@ -384,12 +394,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   btnSoloText: { color: ACCENT, fontWeight: '800', fontSize: 15 },
-  btnMulti: {
-    flex: 1,
+  btnMultiWrap: { flex: 1, overflow: 'hidden' },
+  btnMultiGrad: {
     paddingVertical: Spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: ACCENT,
   },
   btnMultiText: { color: '#fff', fontWeight: '800', fontSize: 15 },
   pressed: { opacity: 0.9 },
