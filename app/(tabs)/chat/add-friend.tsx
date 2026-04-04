@@ -27,14 +27,13 @@ export default function AddFriendScreen() {
   const palette = isDark ? Colors.dark : Colors.light;
   const insets = useSafeAreaInsets();
 
-  // Fake search: filter by query
   const results = query.trim()
     ? FAKE_SEARCH_USERS.filter(
         (u) =>
           u.name.toLowerCase().includes(query.toLowerCase()) ||
           u.username.toLowerCase().includes(query.toLowerCase())
       )
-    : [];
+    : FAKE_SEARCH_USERS;
 
   const handleAddFriend = async (userId: string) => {
     setAdding(userId);
@@ -63,15 +62,36 @@ export default function AddFriendScreen() {
           </ThemedText>
         </View>
 
+        <View style={[styles.searchBar, { borderBottomColor: palette.cardBorder }]}>
+          <MaterialIcons name="search" size={20} color={palette.icon} style={styles.searchIcon} />
+          <TextInput
+            style={[styles.searchInput, { color: palette.text }]}
+            placeholder="Search by name or username..."
+            placeholderTextColor={palette.tabIconDefault}
+            value={query}
+            onChangeText={setQuery}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+          />
+          {query.length > 0 && (
+            <Pressable onPress={() => setQuery('')} hitSlop={8}>
+              <MaterialIcons name="close" size={18} color={palette.icon} />
+            </Pressable>
+          )}
+        </View>
+
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          {results.length === 0 && query.trim() ? (
-            <ThemedText
-              style={[styles.emptyText, { color: palette.icon }]}
-            >
+          <ThemedText style={[styles.sectionLabel, { color: palette.icon }]}>
+            {query.trim() ? 'Search results' : 'People you may know'}
+          </ThemedText>
+
+          {results.length === 0 ? (
+            <ThemedText style={[styles.emptyText, { color: palette.icon }]}>
               {`No users found for "${query}"`}
             </ThemedText>
           ) : (
@@ -83,9 +103,7 @@ export default function AddFriendScreen() {
                     <ThemedText type="defaultSemiBold" style={styles.resultName}>
                       {user.name}
                     </ThemedText>
-                    <ThemedText
-                      style={[styles.resultUsername, { color: palette.icon }]}
-                    >
+                    <ThemedText style={[styles.resultUsername, { color: palette.icon }]}>
                       {user.username}
                     </ThemedText>
                   </View>
@@ -100,7 +118,7 @@ export default function AddFriendScreen() {
                     ]}
                   >
                     <ThemedText style={styles.addBtnText}>
-                      {adding === user.id ? 'Adding...' : 'Add Friend'}
+                      {adding === user.id ? 'Adding...' : 'Add'}
                     </ThemedText>
                   </Pressable>
                 </View>
@@ -109,33 +127,6 @@ export default function AddFriendScreen() {
           )}
         </ScrollView>
 
-        <View
-          style={[
-            styles.searchFooter,
-            {
-              borderTopColor: palette.cardBorder,
-              backgroundColor: palette.background,
-              paddingBottom: Spacing.md,
-            },
-          ]}
-        >
-          <TextInput
-            style={[
-              styles.searchInput,
-              {
-                backgroundColor: palette.card,
-                borderColor: palette.cardBorder,
-                color: palette.text,
-              },
-            ]}
-            placeholder="Search by username..."
-            placeholderTextColor={palette.tabIconDefault}
-            value={query}
-            onChangeText={setQuery}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-        </View>
       </View>
     </SafeAreaView>
   );
@@ -146,7 +137,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: Spacing.md,
-    justifyContent: 'space-between',
   },
   header: {
     flexDirection: 'row',
@@ -155,16 +145,26 @@ const styles = StyleSheet.create({
   },
   backBtn: { marginRight: Spacing.sm },
   title: { fontSize: 20 },
-  searchInput: {
-    borderWidth: 1,
-    borderRadius: 12,
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: StyleSheet.hairlineWidth,
     paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    fontSize: 16,
+    marginBottom: Spacing.sm,
+    gap: Spacing.xs,
   },
-  searchFooter: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingTop: Spacing.md,
+  searchIcon: { marginRight: 4 },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    paddingVertical: 4,
+  },
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: Spacing.sm,
   },
   scroll: { flex: 1, minHeight: 0 },
   scrollContent: { paddingBottom: Spacing.lg, gap: Spacing.sm },

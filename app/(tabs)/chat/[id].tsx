@@ -6,13 +6,15 @@ import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import {
   ActivityIndicator,
+  FlatList,
   KeyboardAvoidingView,
+  ListRenderItemInfo,
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -180,7 +182,7 @@ export default function ChatRoomScreen() {
   const [messageReactions, setMessageReactions] = useState<Record<string, Record<string, number>>>({});
 
   const localIdRef = useRef(0);
-  const scrollRef = useRef<ScrollView>(null);
+  const flatListRef = useRef<FlatList<ChatMessage>>(null);
   const sendLockRef = useRef(false);
   const receiptScheduledRef = useRef(new Set<string>());
 
@@ -208,34 +210,32 @@ export default function ChatRoomScreen() {
     };
   }, [roomId]);
 
-  useLayoutEffect(() => {
-    setMessages([]);
-    setMessagesHydrated(false);
-  }, [roomId]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(messagesStorageKey(roomId));
-        if (cancelled) return;
-        if (raw) {
-          const parsed = JSON.parse(raw) as unknown;
-          if (Array.isArray(parsed)) {
-            setMessages(parsed as ChatMessage[]);
-            setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 50);
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      setMessages([]);
+      setMessagesHydrated(false);
+      void (async () => {
+        try {
+          const raw = await AsyncStorage.getItem(messagesStorageKey(roomId));
+          if (cancelled) return;
+          if (raw) {
+            const parsed = JSON.parse(raw) as unknown;
+            if (Array.isArray(parsed)) {
+              setMessages(parsed as ChatMessage[]);
+            }
           }
+        } catch {
+          /* ignore */
+        } finally {
+          if (!cancelled) setMessagesHydrated(true);
         }
-      } catch {
-        /* ignore */
-      } finally {
-        if (!cancelled) setMessagesHydrated(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [roomId]);
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [roomId])
+  );
 
   useEffect(() => {
     if (messagesHydrated) {
@@ -273,7 +273,7 @@ export default function ChatRoomScreen() {
   }, [messages]);
 
   const scrollToEndSoon = useCallback(() => {
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+    setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
   }, []);
 
   const submitContent = useCallback(
@@ -476,8 +476,7 @@ export default function ChatRoomScreen() {
     );
   };
 
-  const renderMessage = (msg: ChatMessage, index: number) => {
-    const prev = messages[index - 1];
+  const renderMessage = (msg: ChatMessage, prev: ChatMessage | undefined) => {
     const showDivider = shouldShowTimeDivider(prev?.createdAt, msg.createdAt);
     const receipt = receipts[msg.id] ?? 'sent';
 
@@ -567,7 +566,11 @@ export default function ChatRoomScreen() {
           </View>
 
           <View style={[styles.flex, styles.minZero]}>
-            {messages.length === 0 ? (
+            {!messagesHydrated ? (
+              <View style={styles.emptyWrap}>
+                <ActivityIndicator size="large" color={BUBBLE_PURPLE} />
+              </View>
+            ) : messages.length === 0 ? (
               <View style={styles.emptyWrap}>
                 <Text style={styles.emptyBigEmoji}>💬</Text>
                 <ThemedText type="title" style={styles.emptyTitleCenter}>
@@ -590,15 +593,22 @@ export default function ChatRoomScreen() {
                 </Pressable>
               </View>
             ) : (
-              <ScrollView
-                ref={scrollRef}
+              <FlatList
+                ref={flatListRef}
+                data={[...messages].reverse()}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item, index }: ListRenderItemInfo<ChatMessage>) => {
+                  const originalIndex = messages.length - 1 - index;
+                  const prev = messages[originalIndex - 1];
+                  return renderMessage(item, prev);
+                }}
+                inverted
                 style={styles.messagesScroll}
                 contentContainerStyle={styles.messagesContent}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
-              >
-                {messages.map((msg, i) => renderMessage(msg, i))}
-              </ScrollView>
+                keyboardDismissMode="interactive"
+              />
             )}
           </View>
 
@@ -823,8 +833,8 @@ const styles = StyleSheet.create({
   },
   messagesContent: {
     paddingHorizontal: 14,
-    paddingVertical: 16,
-    paddingBottom: 8,
+    paddingTop: 8,
+    paddingBottom: 16,
   },
   timeDividerWrap: {
     alignItems: 'center',
