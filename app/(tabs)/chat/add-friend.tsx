@@ -1,7 +1,8 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,40 +15,94 @@ import { Avatar } from '@/components/avatar';
 import { BaseCard } from '@/components/base-card';
 import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/contexts/theme-context';
+import { useProfile } from '@/contexts/profile-context';
 import { Colors } from '@/constants/theme';
 import { Spacing } from '@/constants/spacing';
 import { supabase } from '@/lib/supabase';
-import { FAKE_SEARCH_USERS, CURRENT_USER_ID } from '@/lib/friends-data';
+
+type ProfileResult = {
+  username: string;
+  name: string;
+};
+
+function initialsFor(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  return name.slice(0, 2).toUpperCase() || '?';
+}
+
+/** Deterministic DM room ID for two usernames — same result regardless of call order */
+function dmRoomId(a: string, b: string): string {
+  return `dm_${[a, b].sort().join('_')}`;
+}
 
 export default function AddFriendScreen() {
   const router = useRouter();
+  const { username: currentUsername } = useProfile();
   const [query, setQuery] = useState('');
+  const [results, setResults] = useState<ProfileResult[]>([]);
+  const [loading, setLoading] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
+  const [added, setAdded] = useState<Set<string>>(new Set());
   const { isDark } = useTheme();
   const palette = isDark ? Colors.dark : Colors.light;
   const insets = useSafeAreaInsets();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const results = query.trim()
-    ? FAKE_SEARCH_USERS.filter(
-        (u) =>
-          u.name.toLowerCase().includes(query.toLowerCase()) ||
-          u.username.toLowerCase().includes(query.toLowerCase())
-      )
-    : FAKE_SEARCH_USERS;
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const trimmed = query.trim();
 
-  const handleAddFriend = async (userId: string) => {
-    setAdding(userId);
+    if (!trimmed) {
+      // Show all profiles except self when no query
+      setLoading(true);
+      debounceRef.current = setTimeout(async () => {
+        const { data } = await supabase
+          .from('profiles')
+          .select('username, name')
+          .neq('username', currentUsername || '')
+          .order('created_at', { ascending: false })
+          .limit(30);
+        setResults(data ?? []);
+        setLoading(false);
+      }, 0);
+      return;
+    }
+
+    setLoading(true);
+    debounceRef.current = setTimeout(async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('username, name')
+        .or(`username.ilike.%${trimmed}%,name.ilike.%${trimmed}%`)
+        .neq('username', currentUsername || '')
+        .limit(20);
+      setResults(data ?? []);
+      setLoading(false);
+    }, 300);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [query, currentUsername]);
+
+  const handleAddFriend = async (targetUsername: string) => {
+    setAdding(targetUsername);
     try {
-      await supabase.from('friends').insert({
-        sender_id: CURRENT_USER_ID,
-        receiver_id: userId,
-        status: 'pending',
-      });
+      const me = currentUsername || 'guest';
+      // Create friendship record (accepted immediately — no pending flow yet)
+      await supabase.from('friends').upsert(
+        { sender_id: me, receiver_id: targetUsername, status: 'accepted' },
+        { onConflict: 'sender_id,receiver_id' }
+      );
+      setAdded((prev) => new Set(prev).add(targetUsername));
+      // Navigate to DM chat room
+      const roomId = dmRoomId(me, targetUsername);
+      router.replace(`/(tabs)/chat/${roomId}`);
     } catch (e) {
-      console.error('[AddFriend] Supabase failed:', e);
+      console.error('[AddFriend] error:', e);
     }
     setAdding(null);
-    router.back();
   };
 
   return (
@@ -90,15 +145,17 @@ export default function AddFriendScreen() {
             {query.trim() ? 'Search results' : 'People you may know'}
           </ThemedText>
 
-          {results.length === 0 ? (
+          {loading ? (
+            <ActivityIndicator color={palette.tint} style={styles.loader} />
+          ) : results.length === 0 ? (
             <ThemedText style={[styles.emptyText, { color: palette.icon }]}>
-              {`No users found for "${query}"`}
+              {query.trim() ? `No users found for "${query}"` : 'No users found'}
             </ThemedText>
           ) : (
             results.map((user) => (
-              <BaseCard key={user.id}>
+              <BaseCard key={user.username}>
                 <View style={styles.resultRow}>
-                  <Avatar initials={user.avatar} size="medium" />
+                  <Avatar initials={initialsFor(user.name)} size="medium" />
                   <View style={styles.resultInfo}>
                     <ThemedText type="defaultSemiBold" style={styles.resultName}>
                       {user.name}
@@ -108,17 +165,17 @@ export default function AddFriendScreen() {
                     </ThemedText>
                   </View>
                   <Pressable
-                    onPress={() => handleAddFriend(user.id)}
-                    disabled={adding === user.id}
+                    onPress={() => { void handleAddFriend(user.username); }}
+                    disabled={adding === user.username || added.has(user.username)}
                     style={({ pressed }) => [
                       styles.addBtn,
-                      { backgroundColor: palette.tint },
+                      { backgroundColor: added.has(user.username) ? palette.cardBorder : palette.tint },
                       pressed && !adding && styles.addBtnPressed,
-                      adding === user.id && styles.addBtnDisabled,
+                      (adding === user.username || added.has(user.username)) && styles.addBtnDisabled,
                     ]}
                   >
                     <ThemedText style={styles.addBtnText}>
-                      {adding === user.id ? 'Adding...' : 'Add'}
+                      {adding === user.username ? 'Adding...' : added.has(user.username) ? 'Added' : 'Add'}
                     </ThemedText>
                   </Pressable>
                 </View>
@@ -126,7 +183,6 @@ export default function AddFriendScreen() {
             ))
           )}
         </ScrollView>
-
       </View>
     </SafeAreaView>
   );
@@ -168,6 +224,7 @@ const styles = StyleSheet.create({
   },
   scroll: { flex: 1, minHeight: 0 },
   scrollContent: { paddingBottom: Spacing.lg, gap: Spacing.sm },
+  loader: { marginTop: Spacing.lg },
   resultRow: {
     flexDirection: 'row',
     alignItems: 'center',

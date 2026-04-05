@@ -65,7 +65,9 @@ const VALID_DOT = 'rgba(34, 197, 94, 0.78)';
 const VALID_RING = 'rgba(74, 222, 128, 0.98)';
 const LAST_MOVE_LIGHT = 'rgba(147, 197, 253, 0.88)';
 const LAST_MOVE_DARK = 'rgba(59, 130, 246, 0.62)';
-const MOVE_MS = 150;
+const PLAYER_MOVE_MS = 150;
+const AI_MOVE_MS = 300;
+const AI_THINK_DELAY_MS = 800;
 const RANK_GUTTER = 22;
 
 const INITIAL: Board = [
@@ -130,7 +132,7 @@ function ThinkingDots() {
   );
 }
 
-function PulsingTurnDot() {
+function PulsingTurnDot({ tint = '#64748B' }: { tint?: string }) {
   const opacity = useSharedValue(1);
   useEffect(() => {
     opacity.value = withRepeat(
@@ -143,7 +145,7 @@ function PulsingTurnDot() {
     );
   }, [opacity]);
   const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
-  return <Animated.View style={[styles.turnPulseDot, style]} />;
+  return <Animated.View style={[styles.turnPulseDot, { backgroundColor: tint }, style]} />;
 }
 
 function CheckOverlay({ flash }: { flash: SharedValue<number> }) {
@@ -173,6 +175,7 @@ function ChessSquare({
   checkFlash,
   lightSq,
   darkSq,
+  disabled,
   onPress,
 }: {
   sq: number;
@@ -188,6 +191,7 @@ function ChessSquare({
   checkFlash: SharedValue<number>;
   lightSq: string;
   darkSq: string;
+  disabled?: boolean;
   onPress: () => void;
 }) {
   const dotR = Math.max(8, sq * 0.22);
@@ -201,11 +205,14 @@ function ChessSquare({
   }
   return (
     <Pressable
+      disabled={disabled}
       onPress={onPress}
-      style={[
+      style={({ pressed }) => [
         styles.square,
         { width: sq, height: sq, backgroundColor: bg },
         isSelected && styles.squareSelectedGlow,
+        disabled && styles.squareDisabled,
+        pressed && !disabled && { opacity: 0.92 },
       ]}
     >
       {showCheckFlash && <CheckOverlay flash={checkFlash} />}
@@ -255,6 +262,8 @@ type LastMove = { fr: number; fc: number; tr: number; tc: number };
 type ChessSnapshot = {
   board: Board;
   whiteTurn: boolean;
+  /** 'white' while you may move; 'black' during your anim, AI think, or AI anim. */
+  currentTurn: 'white' | 'black';
   lastMove: LastMove | null;
   capturedByWhite: Piece[];
   capturedByBlack: Piece[];
@@ -274,6 +283,7 @@ type AnimState = {
   piece: Piece;
   captured: Piece | null;
   nextBoard: Board;
+  durationMs: number;
   onDone: () => void;
 };
 
@@ -305,6 +315,13 @@ export default function ChessScreen() {
   const [difficulty, setDifficulty] = useState<AiDifficulty | null>(null);
   const [lastMove, setLastMove] = useState<LastMove | null>(null);
   const [halfmove, setHalfmove] = useState(0);
+  const [currentTurn, setCurrentTurnState] = useState<'white' | 'black'>('white');
+  /** Synchronous mirror of `currentTurn` so touch handlers never act on a stale value before re-render. */
+  const currentTurnRef = useRef<'white' | 'black'>('white');
+  const setCurrentTurn = useCallback((next: 'white' | 'black') => {
+    currentTurnRef.current = next;
+    setCurrentTurnState(next);
+  }, []);
   const [aiThinking, setAiThinking] = useState(false);
   const [anim, setAnim] = useState<AnimState | null>(null);
   const [moveHistory, setMoveHistory] = useState<string[]>([]);
@@ -325,6 +342,7 @@ export default function ChessScreen() {
 
   const snapFieldsRef = useRef({
     whiteTurn,
+    currentTurn,
     lastMove,
     capturedByWhite,
     capturedByBlack,
@@ -333,6 +351,7 @@ export default function ChessScreen() {
   });
   snapFieldsRef.current = {
     whiteTurn,
+    currentTurn,
     lastMove,
     capturedByWhite,
     capturedByBlack,
@@ -375,29 +394,30 @@ export default function ChessScreen() {
 
   const runAnimation = useCallback(
     (a: AnimState) => {
-      const { fr, fc, tr, tc, captured, onDone } = a;
+      const { fr, fc, tr, tc, captured, onDone, durationMs } = a;
       const pad = sq * 0.06;
       ghostX.value = fc * sq + pad;
       ghostY.value = fr * sq + pad;
       ghostOp.value = 1;
       capOp.value = 1;
       if (captured) {
-        capOp.value = withTiming(0, { duration: MOVE_MS, easing: Easing.out(Easing.quad) });
+        capOp.value = withTiming(0, { duration: durationMs, easing: Easing.out(Easing.quad) });
       }
       ghostX.value = withTiming(
         tc * sq + pad,
-        { duration: MOVE_MS, easing: Easing.out(Easing.cubic) },
+        { duration: durationMs, easing: Easing.out(Easing.cubic) },
         (finished) => {
           if (finished) runOnJS(onDone)();
         }
       );
-      ghostY.value = withTiming(tr * sq + pad, { duration: MOVE_MS, easing: Easing.out(Easing.cubic) });
+      ghostY.value = withTiming(tr * sq + pad, { duration: durationMs, easing: Easing.out(Easing.cubic) });
     },
     [ghostOp, ghostX, ghostY, capOp, sq]
   );
 
   const startAnimatedMove = useCallback(
-    (mv: ChessMove, current: Board, after: () => void) => {
+    (mv: ChessMove, current: Board, after: () => void, opts?: { durationMs?: number }) => {
+      const durationMs = opts?.durationMs ?? PLAYER_MOVE_MS;
       const piece = current[mv.fr][mv.fc]!;
       const captured = current[mv.tr][mv.tc];
       const nextBoard = applyMove(current, mv);
@@ -409,6 +429,7 @@ export default function ChessScreen() {
         piece,
         captured,
         nextBoard,
+        durationMs,
         onDone: () => {
           setBoard(nextBoard);
           setAnim(null);
@@ -428,8 +449,9 @@ export default function ChessScreen() {
   }, [anim, runAnimation]);
 
   const handleSquarePress = useCallback(
-    (row: number, col: number) => {
-      if (gameOver || !whiteTurn || anim || aiThinking) return;
+    (row: number, col: number, currentTurn: 'white' | 'black' = currentTurnRef.current) => {
+      if (currentTurn !== 'white') return;
+      if (gameOver) return;
 
       const b = board;
       const piece = b[row][col];
@@ -447,11 +469,15 @@ export default function ChessScreen() {
             void playClick();
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           }
+          setCurrentTurn('black');
+          setSelected(null);
+          setValidMoves([]);
           setUndoStack((s) => [
             ...s,
             {
               board: cloneBoard(b),
               whiteTurn,
+              currentTurn,
               lastMove,
               capturedByWhite: [...capturedByWhite],
               capturedByBlack: [...capturedByBlack],
@@ -470,8 +496,6 @@ export default function ChessScreen() {
             setLastMove({ fr: sr, fc: sc, tr: row, tc: col });
             setHalfmove((h) => h + 1);
             setWhiteTurn(false);
-            setSelected(null);
-            setValidMoves([]);
             const blackInCheck = isInCheck(nb, false);
             const blackMated = blackInCheck && !hasAnyLegalMove(nb, false);
             if (blackMated) {
@@ -497,13 +521,11 @@ export default function ChessScreen() {
     },
     [
       board,
-      whiteTurn,
       selected,
       validMoves,
       gameOver,
-      anim,
-      aiThinking,
       startAnimatedMove,
+      setCurrentTurn,
       lastMove,
       capturedByWhite,
       capturedByBlack,
@@ -514,6 +536,7 @@ export default function ChessScreen() {
   const handleRestart = useCallback(() => {
     setBoard(INITIAL.map((r) => [...r]));
     setWhiteTurn(true);
+    setCurrentTurn('white');
     setSelected(null);
     setValidMoves([]);
     setGameOver(null);
@@ -543,6 +566,7 @@ export default function ChessScreen() {
     setMoveHistory((h) => h.slice(0, -1));
     setSelected(null);
     setValidMoves([]);
+    setCurrentTurn(snap.currentTurn);
     setAnim(null);
     ghostOp.value = 0;
     capOp.value = 1;
@@ -581,6 +605,7 @@ export default function ChessScreen() {
         {
           board: cloneBoard(b),
           whiteTurn: f.whiteTurn,
+          currentTurn: f.currentTurn,
           lastMove: f.lastMove,
           capturedByWhite: [...f.capturedByWhite],
           capturedByBlack: [...f.capturedByBlack],
@@ -596,29 +621,39 @@ export default function ChessScreen() {
         void playClick();
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
-      startAnimatedMove(mv, b, () => {
-        if (cancelled) return;
-        const nb = boardRef.current;
-        if (captured) {
-          if (isWhite(captured)) setCapturedByBlack((prev) => [...prev, captured]);
-          else setCapturedByWhite((prev) => [...prev, captured]);
-        }
-        setLastMove({ fr: mv.fr, fc: mv.fc, tr: mv.tr, tc: mv.tc });
-        setHalfmove((h) => h + 1);
-        setWhiteTurn(true);
-        const whiteInCheck = isInCheck(nb, true);
-        const whiteMated = whiteInCheck && !hasAnyLegalMove(nb, true);
-        if (whiteMated) {
-          setGameOver('Black wins!');
-          setLosses((l) => l + 1);
-        } else if (!hasAnyLegalMove(nb, true) && !whiteInCheck) {
-          setGameOver('Draw (stalemate)');
-        }
-      });
-    }, 48);
+      startAnimatedMove(
+        mv,
+        b,
+        () => {
+          if (cancelled) return;
+          const nb = boardRef.current;
+          if (captured) {
+            if (isWhite(captured)) setCapturedByBlack((prev) => [...prev, captured]);
+            else setCapturedByWhite((prev) => [...prev, captured]);
+          }
+          setLastMove({ fr: mv.fr, fc: mv.fc, tr: mv.tr, tc: mv.tc });
+          setHalfmove((h) => h + 1);
+          setWhiteTurn(true);
+          const whiteInCheck = isInCheck(nb, true);
+          const whiteMated = whiteInCheck && !hasAnyLegalMove(nb, true);
+          if (whiteMated) {
+            setGameOver('Black wins!');
+            setLosses((l) => l + 1);
+            setCurrentTurn('black');
+          } else if (!hasAnyLegalMove(nb, true) && !whiteInCheck) {
+            setGameOver('Draw (stalemate)');
+            setCurrentTurn('black');
+          } else {
+            setCurrentTurn('white');
+          }
+        },
+        { durationMs: AI_MOVE_MS },
+      );
+    }, AI_THINK_DELAY_MS);
     return () => {
       cancelled = true;
       clearTimeout(t);
+      setAiThinking(false);
     };
   }, [whiteTurn, gameOver, difficulty, anim, startAnimatedMove]);
 
@@ -646,6 +681,7 @@ export default function ChessScreen() {
   const moveLabel = Math.floor(halfmove / 2) + 1;
   const lastTenMoves = moveHistory.slice(-10);
   const canUndo = undoStack.length > 0 && !anim && !aiThinking;
+  const boardLocked = gameOver != null || currentTurn !== 'white';
   const diffLabel =
     difficulty === 'easy' ? 'Easy' : difficulty === 'medium' ? 'Medium' : difficulty === 'hard' ? 'Hard' : '';
 
@@ -734,10 +770,13 @@ export default function ChessScreen() {
         >
           <View style={styles.infoBarLeft}>
             <MaterialIcons name="smart-toy" size={20} color={palette.icon} />
-            {!whiteTurn && !gameOver && !aiThinking && <PulsingTurnDot />}
+            {currentTurn !== 'white' && !gameOver && !aiThinking && <PulsingTurnDot tint="#94A3B8" />}
             {aiThinking && <ThinkingDots />}
-            <ThemedText type="defaultSemiBold" style={{ color: palette.text }}>
-              Opponent
+            <ThemedText
+              type="defaultSemiBold"
+              style={{ color: aiThinking ? '#9CA3AF' : palette.text }}
+            >
+              {aiThinking ? 'AI Thinking…' : 'Opponent'}
             </ThemedText>
           </View>
           <View style={styles.capturedStrip}>
@@ -754,10 +793,23 @@ export default function ChessScreen() {
             Move {moveLabel}
           </ThemedText>
           <View style={styles.turnChip}>
-            {!gameOver && whiteTurn && !anim && <PulsingTurnDot />}
-            <ThemedText type="caption" style={{ color: palette.text, fontWeight: '600' }}>
-              {gameOver ? 'Game over' : whiteTurn ? 'Your turn' : aiThinking ? 'Thinking…' : 'Opponent'}
-            </ThemedText>
+            {gameOver ? (
+              <ThemedText type="caption" style={{ color: palette.text, fontWeight: '600' }}>
+                Game over
+              </ThemedText>
+            ) : currentTurn === 'white' ? (
+              <View style={styles.turnChipInner}>
+                <PulsingTurnDot tint="#22C55E" />
+                <Text style={styles.turnLabelYourTurn}>Your Turn</Text>
+              </View>
+            ) : aiThinking ? (
+              <View style={styles.turnChipInner}>
+                <ThinkingDots />
+                <Text style={styles.turnLabelAiThinking}>AI Thinking…</Text>
+              </View>
+            ) : (
+              <Text style={styles.turnLabelAiThinking}>Opponent moving…</Text>
+            )}
           </View>
         </View>
 
@@ -820,12 +872,17 @@ export default function ChessScreen() {
                 <View key={rowIdx} style={styles.row}>
                   {row.map((piece, colIdx) => {
                     const isLight = (rowIdx + colIdx) % 2 === 1;
-                    const isSel = selected?.[0] === rowIdx && selected?.[1] === colIdx;
+                    const isSel =
+                      currentTurn === 'white' &&
+                      selected?.[0] === rowIdx &&
+                      selected?.[1] === colIdx;
                     const isLast =
                       !!lastMove &&
                       ((lastMove.fr === rowIdx && lastMove.fc === colIdx) ||
                         (lastMove.tr === rowIdx && lastMove.tc === colIdx));
-                    const isValid = validMoves.some(([r, c]) => r === rowIdx && c === colIdx);
+                    const isValid =
+                      currentTurn === 'white' &&
+                      validMoves.some(([r, c]) => r === rowIdx && c === colIdx);
                     const hidePiece = anim?.fr === rowIdx && anim.fc === colIdx;
                     const fadeCapture =
                       !!anim?.captured && anim.tr === rowIdx && anim.tc === colIdx;
@@ -848,6 +905,7 @@ export default function ChessScreen() {
                         checkFlash={checkFlash}
                         lightSq={lightSq}
                         darkSq={darkSq}
+                        disabled={boardLocked}
                         onPress={() => handleSquarePress(rowIdx, colIdx)}
                       />
                     );
@@ -880,7 +938,7 @@ export default function ChessScreen() {
         >
           <View style={styles.infoBarLeft}>
             <MaterialIcons name="person" size={20} color={palette.icon} />
-            {whiteTurn && !gameOver && !anim && <PulsingTurnDot />}
+            {currentTurn === 'white' && !gameOver && <PulsingTurnDot tint="#22C55E" />}
             <ThemedText type="defaultSemiBold" style={{ color: palette.text }}>
               You
             </ThemedText>
@@ -1019,19 +1077,31 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   undoBtnText: { fontSize: 13, fontWeight: '800' },
-  turnChip: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  turnChip: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 24 },
+  turnChipInner: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  turnLabelYourTurn: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#22C55E',
+    letterSpacing: 0.2,
+  },
+  turnLabelAiThinking: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#9CA3AF',
+    letterSpacing: 0.2,
+  },
   turnPulseDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#7C3AED',
   },
   thinkingRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   thinkingDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#7C3AED',
+    backgroundColor: '#9CA3AF',
   },
   resultBanner: { marginBottom: 6 },
   woodFrame: {
@@ -1053,6 +1123,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  squareDisabled: {
+    opacity: 0.88,
   },
   squareSelectedGlow: {
     shadowColor: '#F6F669',

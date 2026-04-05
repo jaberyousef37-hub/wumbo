@@ -7,6 +7,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useProfile } from '@/contexts/profile-context';
 import { useTheme } from '@/contexts/theme-context';
 import { AppColors, Colors } from '@/constants/theme';
+import { supabase } from '@/lib/supabase';
 
 export default function ProfileSetupScreen() {
   const router = useRouter();
@@ -16,13 +17,21 @@ export default function ProfileSetupScreen() {
   const insets = useSafeAreaInsets();
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     const trimmedName = name.trim();
     const trimmedUsername = username.trim();
     if (!trimmedName || !trimmedUsername) return;
+    setSaving(true);
     const formattedUsername = trimmedUsername.startsWith('@') ? trimmedUsername : `@${trimmedUsername}`;
     setProfile(trimmedName, formattedUsername);
+    // Persist profile to Supabase so others can find this user
+    await supabase.from('profiles').upsert(
+      { username: formattedUsername, name: trimmedName },
+      { onConflict: 'username' }
+    );
+    setSaving(false);
     router.replace('/(tabs)/home');
   };
 
@@ -65,8 +74,8 @@ export default function ProfileSetupScreen() {
 
         <View style={[styles.footer, { paddingBottom: 24 }]}>
           <Pressable
-            onPress={handleContinue}
-            disabled={!isValid}
+            onPress={() => { void handleContinue(); }}
+            disabled={!isValid || saving}
             style={[styles.button, !isValid && styles.buttonDisabled]}
           >
             <LinearGradient

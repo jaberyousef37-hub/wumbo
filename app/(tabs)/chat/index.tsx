@@ -28,7 +28,32 @@ const CONVERSATIONS: {
   timestamp: string;
   unreadCount: number;
   isGameInvite: boolean;
-}[] = [];
+}[] = [
+  {
+    id: 'mock_dm_1',
+    name: 'Nova Sky',
+    lastMessage: 'gg ez 😂 rematch?',
+    timestamp: '2m ago',
+    unreadCount: 2,
+    isGameInvite: false,
+  },
+  {
+    id: 'mock_dm_2',
+    name: 'Kai Phoenix',
+    lastMessage: '🎮 Game invite: Tic Tac Toe',
+    timestamp: '14m ago',
+    unreadCount: 0,
+    isGameInvite: true,
+  },
+  {
+    id: 'mock_dm_3',
+    name: 'Echo Wave',
+    lastMessage: 'you around tonight?',
+    timestamp: 'Yesterday',
+    unreadCount: 0,
+    isGameInvite: false,
+  },
+];
 
 type Tab = 'chats' | 'friends';
 

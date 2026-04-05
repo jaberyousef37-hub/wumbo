@@ -15,6 +15,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -42,6 +43,30 @@ import {
   type RichInvitePayload,
 } from '@/lib/chat-rich-content';
 import { generateRoomCode } from '@/lib/room-utils';
+import { supabase } from '@/lib/supabase';
+
+type SupabaseMessageRow = {
+  id: string;
+  room_id: string;
+  sender_name: string;
+  content: string;
+  created_at: string;
+};
+
+function rowToMessage(row: SupabaseMessageRow, senderName: string): ChatMessage {
+  const isSent = !!senderName && row.sender_name === senderName;
+  const base = { id: row.id, createdAt: row.created_at, isSent };
+  const rich = tryParseRichPayload(row.content);
+  if (rich?.t === 'img') {
+    const p = rich as RichImagePayload;
+    return { ...base, kind: 'image', imageUri: `data:${p.mime};base64,${p.b64}`, caption: p.caption };
+  }
+  if (rich?.t === 'invite') {
+    const p = rich as RichInvitePayload;
+    return { ...base, kind: 'invite', gameId: p.gameId, code: p.code };
+  }
+  return { ...base, kind: 'text', text: row.content };
+}
 
 const ROOM_NAMES: Record<string, string> = {
   '1': 'Alex Rivera',
@@ -185,6 +210,7 @@ export default function ChatRoomScreen() {
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
   const sendLockRef = useRef(false);
   const receiptScheduledRef = useRef(new Set<string>());
+  const senderNameRef = useRef('');
 
   const { isDark } = useTheme();
   const palette = isDark ? Colors.dark : Colors.light;
@@ -192,6 +218,19 @@ export default function ChatRoomScreen() {
 
   const hasSendableContent = inputText.trim().length > 0 || pendingImage !== null;
 
+  // Load persistent sender identity (stable per-device guest name)
+  useEffect(() => {
+    void (async () => {
+      let name = await AsyncStorage.getItem('wumbo-sender-name');
+      if (!name) {
+        name = `guest-${Math.random().toString(36).slice(2, 10)}`;
+        await AsyncStorage.setItem('wumbo-sender-name', name);
+      }
+      senderNameRef.current = name;
+    })();
+  }, []);
+
+  // Load reactions from local cache
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -210,23 +249,41 @@ export default function ChatRoomScreen() {
     };
   }, [roomId]);
 
+  // Fetch messages from Supabase on focus; fall back to local cache if offline
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      setMessages([]);
-      setMessagesHydrated(false);
       void (async () => {
         try {
-          const raw = await AsyncStorage.getItem(messagesStorageKey(roomId));
+          const { data, error } = await supabase
+            .from('messages')
+            .select('*')
+            .eq('room_id', roomId)
+            .order('created_at', { ascending: true });
           if (cancelled) return;
-          if (raw) {
-            const parsed = JSON.parse(raw) as unknown;
-            if (Array.isArray(parsed)) {
-              setMessages(parsed as ChatMessage[]);
+          if (!error && data) {
+            const mapped = (data as SupabaseMessageRow[]).map((row) =>
+              rowToMessage(row, senderNameRef.current)
+            );
+            setMessages(mapped);
+            // Update local cache for offline fallback
+            void AsyncStorage.setItem(messagesStorageKey(roomId), JSON.stringify(mapped));
+          } else {
+            // Supabase unavailable — load from local cache
+            const raw = await AsyncStorage.getItem(messagesStorageKey(roomId));
+            if (!cancelled && raw) {
+              const parsed = JSON.parse(raw) as unknown;
+              if (Array.isArray(parsed)) setMessages(parsed as ChatMessage[]);
             }
           }
         } catch {
-          /* ignore */
+          try {
+            const raw = await AsyncStorage.getItem(messagesStorageKey(roomId));
+            if (!cancelled && raw) {
+              const parsed = JSON.parse(raw) as unknown;
+              if (Array.isArray(parsed)) setMessages(parsed as ChatMessage[]);
+            }
+          } catch { /* ignore */ }
         } finally {
           if (!cancelled) setMessagesHydrated(true);
         }
@@ -237,17 +294,38 @@ export default function ChatRoomScreen() {
     }, [roomId])
   );
 
+  // Realtime subscription — append incoming messages and resolve optimistic sends
   useEffect(() => {
-    if (messagesHydrated) {
-      void AsyncStorage.setItem(messagesStorageKey(roomId), JSON.stringify(messages));
-    }
-    const key = messagesStorageKey(roomId);
-    const snap = messages;
-    const h = messagesHydrated;
+    const channel = supabase
+      .channel(`messages:${roomId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages', filter: `room_id=eq.${roomId}` },
+        (payload) => {
+          const row = payload.new as SupabaseMessageRow;
+          const msg = rowToMessage(row, senderNameRef.current);
+          setMessages((prev) => {
+            // Already present (real ID confirmed by insert response) → skip
+            if (prev.some((m) => m.id === msg.id)) return prev;
+            // Own message still showing with optimistic local- id → replace it
+            if (msg.isSent) {
+              const localIdx = prev.findIndex((m) => m.id.startsWith('local-'));
+              if (localIdx >= 0) {
+                const next = [...prev];
+                next[localIdx] = msg;
+                return next;
+              }
+            }
+            return [...prev, msg];
+          });
+        }
+      )
+      .subscribe();
+
     return () => {
-      if (h) void AsyncStorage.setItem(key, JSON.stringify(snap));
+      void supabase.removeChannel(channel);
     };
-  }, [roomId, messages, messagesHydrated]);
+  }, [roomId]);
 
   useEffect(() => {
     const timeouts: ReturnType<typeof setTimeout>[] = [];
@@ -318,12 +396,33 @@ export default function ChatRoomScreen() {
         }
         setMessages((prev) => [...prev, localMsg]);
         scrollToEndSoon();
+        // Persist to Supabase; swap optimistic local-id for server UUID on success
+        void supabase
+          .from('messages')
+          .insert({
+            room_id: roomId,
+            sender_name: senderNameRef.current || 'guest',
+            content,
+          })
+          .select('id, created_at')
+          .single()
+          .then(({ data }) => {
+            if (data) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === idLocal
+                    ? { ...m, id: data.id as string, createdAt: data.created_at as string }
+                    : m
+                )
+              );
+            }
+          });
       } finally {
         sendLockRef.current = false;
         setIsSending(false);
       }
     },
-    [scrollToEndSoon]
+    [roomId, scrollToEndSoon]
   );
 
   const handleSend = useCallback(() => {
@@ -539,11 +638,11 @@ export default function ChatRoomScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
+    <SafeAreaView style={styles.safe} edges={['left', 'right']}>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={insets.top}
       >
         <View style={[styles.flex, { backgroundColor: palette.background, paddingTop: insets.top }]}>
           <View style={[styles.header, { backgroundColor: palette.card, borderBottomColor: palette.cardBorder }]}>
@@ -619,7 +718,7 @@ export default function ChatRoomScreen() {
               {
                 backgroundColor: palette.card,
                 borderTopColor: palette.cardBorder,
-                paddingBottom: Math.max(insets.bottom, 8),
+                paddingBottom: 8,
               },
             ]}
           >
