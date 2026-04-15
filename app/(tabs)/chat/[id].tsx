@@ -1,15 +1,16 @@
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   ListRenderItemInfo,
   Modal,
@@ -22,7 +23,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import Animated, { SlideInUp } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
@@ -101,6 +101,9 @@ const SEND_ACTIVE = '#7C3AED';
 const SEND_DISABLED = '#555555';
 
 const THIRTY_MIN_MS = 30 * 60 * 1000;
+
+/** Initial header height before onLayout (iOS KeyboardAvoidingView offset). */
+const CHAT_HEADER_LAYOUT_HEIGHT = 56;
 
 function reactionsStorageKey(roomId: string): string {
   return `wumbo-chat-reactions-v1-${roomId}`;
@@ -187,6 +190,9 @@ export default function ChatRoomScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [headerHeight, setHeaderHeight] = useState(CHAT_HEADER_LAYOUT_HEIGHT);
 
   const roomId = String(id ?? '1');
   const roomName = ROOM_NAMES[roomId] ?? 'Chat';
@@ -211,6 +217,8 @@ export default function ChatRoomScreen() {
   const sendLockRef = useRef(false);
   const receiptScheduledRef = useRef(new Set<string>());
   const senderNameRef = useRef('');
+  const listLayoutReadyRef = useRef(false);
+  const pendingScrollRef = useRef(false);
 
   const { isDark } = useTheme();
   const palette = isDark ? Colors.dark : Colors.light;
@@ -248,6 +256,17 @@ export default function ChatRoomScreen() {
       cancelled = true;
     };
   }, [roomId]);
+
+  useEffect(() => {
+    const showEv = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEv = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const s = Keyboard.addListener(showEv, () => setKeyboardOpen(true));
+    const h = Keyboard.addListener(hideEv, () => setKeyboardOpen(false));
+    return () => {
+      s.remove();
+      h.remove();
+    };
+  }, []);
 
   // Fetch messages from Supabase on focus; fall back to local cache if offline
   useFocusEffect(
@@ -293,6 +312,18 @@ export default function ChatRoomScreen() {
       };
     }, [roomId])
   );
+
+  useEffect(() => {
+    if (!messagesHydrated || messages.length === 0) return;
+    const id = requestAnimationFrame(() => {
+      if (listLayoutReadyRef.current) {
+        flatListRef.current?.scrollToEnd({ animated: false });
+      } else {
+        pendingScrollRef.current = true;
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [messagesHydrated, messages.length]);
 
   // Realtime subscription — append incoming messages and resolve optimistic sends
   useEffect(() => {
@@ -350,9 +381,16 @@ export default function ChatRoomScreen() {
     };
   }, [messages]);
 
-  const scrollToEndSoon = useCallback(() => {
-    setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
+  const scrollToLatest = useCallback((animated: boolean) => {
+    flatListRef.current?.scrollToEnd({ animated });
   }, []);
+
+  const scrollToLatestSoon = useCallback(
+    (animated: boolean) => {
+      setTimeout(() => scrollToLatest(animated), 50);
+    },
+    [scrollToLatest]
+  );
 
   const submitContent = useCallback(
     (content: string, clearComposer: boolean) => {
@@ -395,7 +433,7 @@ export default function ChatRoomScreen() {
           localMsg = { id: idLocal, createdAt, isSent: true, kind: 'text', text: content };
         }
         setMessages((prev) => [...prev, localMsg]);
-        scrollToEndSoon();
+        scrollToLatestSoon(true);
         // Persist to Supabase; swap optimistic local-id for server UUID on success
         void supabase
           .from('messages')
@@ -422,7 +460,7 @@ export default function ChatRoomScreen() {
         setIsSending(false);
       }
     },
-    [roomId, scrollToEndSoon]
+    [roomId, scrollToLatestSoon]
   );
 
   const handleSend = useCallback(() => {
@@ -637,161 +675,191 @@ export default function ChatRoomScreen() {
     );
   };
 
+  /** Distance from window top to bottom of header — measured so KAV does not leave a gap above the keyboard. */
+  const keyboardVerticalOffset: number = Platform.OS === 'ios' ? (insets.top + headerHeight) : 0;
+  const mainBottomInset = keyboardOpen ? 0 : tabBarHeight;
+
   return (
-    <SafeAreaView style={styles.safe} edges={['left', 'right']}>
+    <>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={insets.top}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+        keyboardVerticalOffset={keyboardVerticalOffset}
+        enabled={Platform.OS === 'ios'}
       >
-        <View style={[styles.flex, { backgroundColor: palette.background, paddingTop: insets.top }]}>
-          <View style={[styles.header, { backgroundColor: palette.card, borderBottomColor: palette.cardBorder }]}>
-            <TouchableOpacity
-              onPress={() => router.back()}
-              style={styles.backButton}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            >
-              <MaterialIcons name="arrow-back" size={24} color={palette.text} />
-            </TouchableOpacity>
-            <View style={styles.headerCenter}>
-              <ThemedText type="defaultSemiBold" style={styles.headerTitle}>
-                {roomName}
-              </ThemedText>
-              <View style={styles.onlineStatus}>
-                <View style={styles.onlineDot} />
-                <Text style={[styles.onlineText, { color: palette.icon }]}>Online</Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={[styles.flex, styles.minZero]}>
-            {!messagesHydrated ? (
-              <View style={styles.emptyWrap}>
-                <ActivityIndicator size="large" color={BUBBLE_PURPLE} />
-              </View>
-            ) : messages.length === 0 ? (
-              <View style={styles.emptyWrap}>
-                <Text style={styles.emptyBigEmoji}>💬</Text>
-                <ThemedText type="title" style={styles.emptyTitleCenter}>
-                  No messages yet
-                </ThemedText>
-                <ThemedText type="body" style={[styles.emptySubtitle, { color: AppColors.muted }]}>
-                  Say hello and start playing!
-                </ThemedText>
-                <Pressable
-                  onPress={() => void submitContent('Hi! 👋', false)}
-                  disabled={isSending}
-                  style={({ pressed }) => [
-                    styles.sayHiBtn,
-                    { backgroundColor: BUBBLE_PURPLE, opacity: pressed ? 0.9 : 1 },
-                  ]}
-                >
-                  <ThemedText type="cardTitle" style={styles.sayHiBtnText}>
-                    Say Hi 👋
-                  </ThemedText>
-                </Pressable>
-              </View>
-            ) : (
-              <FlatList
-                ref={flatListRef}
-                data={[...messages].reverse()}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item, index }: ListRenderItemInfo<ChatMessage>) => {
-                  const originalIndex = messages.length - 1 - index;
-                  const prev = messages[originalIndex - 1];
-                  return renderMessage(item, prev);
-                }}
-                inverted
-                style={styles.messagesScroll}
-                contentContainerStyle={styles.messagesContent}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                keyboardDismissMode="interactive"
-              />
-            )}
-          </View>
-
-          <Animated.View
-            entering={SlideInUp.delay(120).springify().damping(18)}
+        <SafeAreaView style={styles.flex} edges={['top', 'left', 'right']}>
+          <View
             style={[
-              styles.inputColumn,
+              styles.flex,
               {
-                backgroundColor: palette.card,
-                borderTopColor: palette.cardBorder,
-                paddingBottom: 8,
+                backgroundColor: palette.background,
+                paddingBottom: mainBottomInset,
               },
             ]}
           >
-            {pendingImage ? (
-              <View style={[styles.previewRow, { borderBottomColor: palette.cardBorder }]}>
-                <Image source={{ uri: pendingImage.uri }} style={styles.previewThumb} contentFit="cover" />
+            <View
+              onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
+              style={[styles.header, { backgroundColor: palette.card, borderBottomColor: palette.cardBorder }]}
+            >
+              <TouchableOpacity
+                onPress={() => router.back()}
+                style={styles.backButton}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <MaterialIcons name="arrow-back" size={24} color={palette.text} />
+              </TouchableOpacity>
+              <View style={styles.headerCenter}>
+                <ThemedText type="defaultSemiBold" style={styles.headerTitle}>
+                  {roomName}
+                </ThemedText>
+                <View style={styles.onlineStatus}>
+                  <View style={styles.onlineDot} />
+                  <Text style={[styles.onlineText, { color: palette.icon }]}>Online</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={[styles.flex, styles.minZero]}>
+              {!messagesHydrated ? (
+                <View style={styles.emptyWrap}>
+                  <ActivityIndicator size="large" color={BUBBLE_PURPLE} />
+                </View>
+              ) : messages.length === 0 ? (
+                <View style={styles.emptyWrap}>
+                  <Text style={styles.emptyBigEmoji}>💬</Text>
+                  <ThemedText type="title" style={styles.emptyTitleCenter}>
+                    No messages yet
+                  </ThemedText>
+                  <ThemedText type="body" style={[styles.emptySubtitle, { color: AppColors.muted }]}>
+                    Say hello and start playing!
+                  </ThemedText>
+                  <Pressable
+                    onPress={() => void submitContent('Hi! 👋', false)}
+                    disabled={isSending}
+                    style={({ pressed }) => [
+                      styles.sayHiBtn,
+                      { backgroundColor: BUBBLE_PURPLE, opacity: pressed ? 0.9 : 1 },
+                    ]}
+                  >
+                    <ThemedText type="cardTitle" style={styles.sayHiBtnText}>
+                      Say Hi 👋
+                    </ThemedText>
+                  </Pressable>
+                </View>
+              ) : (
+                <FlatList
+                  ref={flatListRef}
+                  data={messages}
+                  keyExtractor={(item) => item.id}
+                  renderItem={({ item, index }: ListRenderItemInfo<ChatMessage>) => {
+                    const prev = index > 0 ? messages[index - 1] : undefined;
+                    return renderMessage(item, prev);
+                  }}
+                  inverted={false}
+                  style={styles.flex}
+                  contentContainerStyle={styles.messagesContent}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  keyboardDismissMode="interactive"
+                  onLayout={() => {
+                    listLayoutReadyRef.current = true;
+                    if (pendingScrollRef.current) {
+                      pendingScrollRef.current = false;
+                      flatListRef.current?.scrollToEnd({ animated: false });
+                    }
+                  }}
+                  onContentSizeChange={() => {
+                    if (listLayoutReadyRef.current) {
+                      scrollToLatest(false);
+                    } else {
+                      pendingScrollRef.current = true;
+                    }
+                  }}
+                />
+              )}
+            </View>
+
+            <View
+              style={[
+                styles.inputColumn,
+                {
+                  backgroundColor: palette.card,
+                  borderTopColor: palette.cardBorder,
+                  paddingBottom: keyboardOpen ? 0 : 8,
+                },
+              ]}
+            >
+              {pendingImage ? (
+                <View style={[styles.previewRow, { borderBottomColor: palette.cardBorder }]}>
+                  <Image source={{ uri: pendingImage.uri }} style={styles.previewThumb} contentFit="cover" />
+                  <TouchableOpacity
+                    onPress={() => setPendingImage(null)}
+                    hitSlop={12}
+                    style={styles.previewClose}
+                    accessibilityLabel="Remove image"
+                  >
+                    <MaterialIcons name="close" size={22} color={palette.text} />
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+              <View style={[styles.composerRow, { borderColor: COMPOSER_BORDER }]}>
                 <TouchableOpacity
-                  onPress={() => setPendingImage(null)}
-                  hitSlop={12}
-                  style={styles.previewClose}
-                  accessibilityLabel="Remove image"
+                  style={[styles.iconBtn, { backgroundColor: INPUT_FILL, borderColor: COMPOSER_BORDER }]}
+                  onPress={() => setShowEmojiSheet(true)}
+                  hitSlop={8}
+                  accessibilityLabel="Emoji"
                 >
-                  <MaterialIcons name="close" size={22} color={palette.text} />
+                  <Text style={styles.iconBtnEmoji}>😊</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.iconBtn, { backgroundColor: INPUT_FILL, borderColor: COMPOSER_BORDER }]}
+                  onPress={() => void handlePickImage()}
+                  hitSlop={8}
+                  accessibilityLabel="Photo library"
+                >
+                  <Text style={styles.iconBtnEmoji}>📷</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.iconBtn, { backgroundColor: INPUT_FILL, borderColor: COMPOSER_BORDER }]}
+                  onPress={() => setShowGamePicker(true)}
+                  hitSlop={8}
+                  accessibilityLabel="Game challenge"
+                >
+                  <Text style={styles.iconBtnEmoji}>🎮</Text>
+                </TouchableOpacity>
+                <TextInput
+                  style={[styles.input, { backgroundColor: INPUT_FILL, color: palette.text }]}
+                  placeholder="Message"
+                  placeholderTextColor={palette.tabIconDefault}
+                  value={inputText}
+                  onChangeText={setInputText}
+                  multiline
+                  maxLength={500}
+                  returnKeyType="default"
+                  blurOnSubmit={false}
+                  editable={!isSending}
+                />
+                <TouchableOpacity
+                  style={[
+                    styles.sendCircle,
+                    {
+                      backgroundColor: hasSendableContent && !isSending ? SEND_ACTIVE : SEND_DISABLED,
+                    },
+                  ]}
+                  onPress={handleSend}
+                  disabled={!hasSendableContent || isSending}
+                  activeOpacity={0.75}
+                >
+                  {isSending ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <MaterialIcons name="arrow-upward" size={22} color="#FFFFFF" />
+                  )}
                 </TouchableOpacity>
               </View>
-            ) : null}
-            <View style={[styles.composerRow, { borderColor: COMPOSER_BORDER }]}>
-              <TouchableOpacity
-                style={[styles.iconBtn, { backgroundColor: INPUT_FILL, borderColor: COMPOSER_BORDER }]}
-                onPress={() => setShowEmojiSheet(true)}
-                hitSlop={8}
-                accessibilityLabel="Emoji"
-              >
-                <Text style={styles.iconBtnEmoji}>😊</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.iconBtn, { backgroundColor: INPUT_FILL, borderColor: COMPOSER_BORDER }]}
-                onPress={() => void handlePickImage()}
-                hitSlop={8}
-                accessibilityLabel="Photo library"
-              >
-                <Text style={styles.iconBtnEmoji}>📷</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.iconBtn, { backgroundColor: INPUT_FILL, borderColor: COMPOSER_BORDER }]}
-                onPress={() => setShowGamePicker(true)}
-                hitSlop={8}
-                accessibilityLabel="Game challenge"
-              >
-                <Text style={styles.iconBtnEmoji}>🎮</Text>
-              </TouchableOpacity>
-              <TextInput
-                style={[styles.input, { backgroundColor: INPUT_FILL, color: palette.text }]}
-                placeholder="Message"
-                placeholderTextColor={palette.tabIconDefault}
-                value={inputText}
-                onChangeText={setInputText}
-                multiline
-                maxLength={500}
-                returnKeyType="default"
-                blurOnSubmit={false}
-                editable={!isSending}
-              />
-              <TouchableOpacity
-                style={[
-                  styles.sendCircle,
-                  {
-                    backgroundColor: hasSendableContent && !isSending ? SEND_ACTIVE : SEND_DISABLED,
-                  },
-                ]}
-                onPress={handleSend}
-                disabled={!hasSendableContent || isSending}
-                activeOpacity={0.75}
-              >
-                {isSending ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <MaterialIcons name="arrow-upward" size={22} color="#FFFFFF" />
-                )}
-              </TouchableOpacity>
             </View>
-          </Animated.View>
-        </View>
+          </View>
+        </SafeAreaView>
       </KeyboardAvoidingView>
 
       <Modal visible={showGamePicker} animationType="slide" transparent>
@@ -879,12 +947,11 @@ export default function ChatRoomScreen() {
           </Pressable>
         </Pressable>
       </Modal>
-    </SafeAreaView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
   flex: { flex: 1 },
   minZero: { minHeight: 0 },
   header: {
@@ -927,13 +994,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sayHiBtnText: { color: '#fff', fontWeight: '700' },
-  messagesScroll: {
-    flex: 1,
-  },
   messagesContent: {
+    flexGrow: 1,
+    justifyContent: 'flex-end',
     paddingHorizontal: 14,
     paddingTop: 8,
-    paddingBottom: 16,
+    paddingBottom: 10,
   },
   timeDividerWrap: {
     alignItems: 'center',
@@ -946,7 +1012,7 @@ const styles = StyleSheet.create({
   rowSent: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    marginBottom: 10,
+    marginBottom: 6,
   },
   sentColumn: {
     maxWidth: '80%',
@@ -955,7 +1021,7 @@ const styles = StyleSheet.create({
   rowReceived: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    marginBottom: 10,
+    marginBottom: 6,
     gap: 8,
   },
   receivedColumn: {

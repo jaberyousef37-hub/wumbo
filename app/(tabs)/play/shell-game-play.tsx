@@ -8,6 +8,7 @@ import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import Reanimated, {
   cancelAnimation,
   Easing,
+  Extrapolation,
   interpolate,
   runOnJS,
   useAnimatedStyle,
@@ -21,42 +22,69 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { HeaderBar } from '@/components/design-system';
 import { ConfettiView } from '@/components/confetti-view';
 import { InGameChat } from '@/components/in-game-chat';
 import { useCosmetics } from '@/contexts/cosmetics-context';
 import { HowToPlayButton } from '@/components/how-to-play-button';
 import { ThemedText } from '@/components/themed-text';
+import { colors as dsColors } from '@/constants/design-system/theme';
 import { Typography } from '@/constants/typography';
 import { playClick } from '@/lib/sounds';
 import { supabase } from '@/lib/supabase';
 
-const BG_DEEP = '#0d2818';
-const FELT_PAD = 'rgba(13, 40, 24, 0.92)';
-const GOLD = '#C9A227';
-const GOLD_DARK = '#8B6914';
-const GOLD_HIGHLIGHT = '#E8C547';
+const BG_DEEP = '#0a1620';
+const FELT_GREEN = '#0d3d2a';
+const FELT_DEEP = '#062015';
+const WOOD_DARK = '#2c1810';
+const WOOD_EDGE = '#4a2c1a';
+const GOLD = '#D4AF37';
+const GOLD_MID = '#B8860B';
+const GOLD_DARK = '#7a5c0c';
+const GOLD_HIGHLIGHT = '#FFF4C4';
+const GOLD_RIM = '#F0E68C';
 const ACCENT = GOLD;
 const HIGH_SCORE_KEY = 'shell_game_high_v1';
 
-const SHUFFLE_COUNT = 6;
-const WATCH_MS = 1800;
+const SHUFFLE_COUNT = 8;
+/** Cup lift spring ~this long before ball hold. */
+const LIFT_MS = 480;
+/** Phase 1: ball clearly visible under lifted cup. */
+const BALL_HOLD_MS = 1500;
+/** Brief lower before shuffle starts. */
+const CUP_LOWER_MS = 220;
 
-/** Per swap, ramp from 600ms → 200ms (Hard pacing). */
-function swapMsForStep(step: number, totalSteps: number): number {
-  if (totalSteps <= 1) return 600;
-  const t = step / (totalSteps - 1);
-  return Math.round(600 - (600 - 200) * t);
+/** Each round shuffles faster (caps at ~2.2×). */
+function shuffleSpeedFactor(roundIndex: number): number {
+  return Math.min(1 + (Math.max(1, roundIndex) - 1) * 0.14, 2.2);
 }
 
-const CUP_SIZE = 154;
-const CUP_SPACING = 20;
-const CUP_BODY_W = 94;
-const CUP_BODY_H = 122;
-const RIM_W = 120;
-const RIM_H = 22;
-const BASE_W = 66;
-const BASE_H = 13;
-const BALL_SZ = 34;
+/** Per swap, ramp from max→min ms; scaled by round (faster each round). */
+function swapMsForStep(step: number, totalSteps: number, roundIndex: number): number {
+  if (totalSteps <= 1) return Math.round(420 / shuffleSpeedFactor(roundIndex));
+  const t = step / (totalSteps - 1);
+  const maxMs = 560;
+  const minMs = 160;
+  const base = Math.round(maxMs - (maxMs - minMs) * t);
+  return Math.max(95, Math.round(base / shuffleSpeedFactor(roundIndex)));
+}
+
+// Premium cups: larger base art; scale to fit track (felt + padding).
+const _SCREEN_W = Dimensions.get('window').width;
+const _CUP_BASE = 178;
+const _GAP_BASE = 18;
+const CUP_SCALE_BOOST = 1.2;
+const _CUP_FIT = (_SCREEN_W - 52) / (3 * _CUP_BASE + 2 * _GAP_BASE);
+const _CUP_SCALE = Math.min(1.08 * CUP_SCALE_BOOST, _CUP_FIT * CUP_SCALE_BOOST);
+const CUP_SIZE = Math.round(_CUP_BASE * _CUP_SCALE);
+const CUP_SPACING = Math.round(_GAP_BASE * _CUP_SCALE);
+const CUP_BODY_W = Math.round(108 * _CUP_SCALE);
+const CUP_BODY_H = Math.round(138 * _CUP_SCALE);
+const RIM_W = Math.round(136 * _CUP_SCALE);
+const RIM_H = Math.round(26 * _CUP_SCALE);
+const BASE_W = Math.round(76 * _CUP_SCALE);
+const BASE_H = Math.round(16 * _CUP_SCALE);
+const BALL_SZ = Math.round(42 * _CUP_SCALE);
 
 type GamePhase = 'hiding' | 'watching' | 'shuffling' | 'guessing' | 'result';
 
@@ -99,21 +127,32 @@ function pointsForCorrect(streakBefore: number): number {
   return Math.round(100 * streakMultiplier(streakBefore));
 }
 
-function ShinyBall({ style }: { style?: object }) {
+function GlowingBall({ style, pulse }: { style?: object; pulse?: boolean }) {
   return (
-    <View style={[styles.ballWrap, style]}>
-      <LinearGradient
-        colors={['#EF4444', '#B91C1C', '#7F1D1D']}
-        style={styles.ballCircle}
-        start={{ x: 0.2, y: 0.1 }}
-        end={{ x: 0.9, y: 0.95 }}
-      />
-      <View style={styles.ballHighlight} />
+    <View style={[styles.ballGlowOuter, style]}>
+      <View style={styles.ballGlowRing} />
+      <View style={styles.ballWrap}>
+        <LinearGradient
+          colors={['#FFF5A0', '#FF6B35', '#FF2200', '#8B0000']}
+          style={styles.ballCircle}
+          start={{ x: 0.15, y: 0.12 }}
+          end={{ x: 0.92, y: 0.95 }}
+        />
+        <LinearGradient
+          colors={['rgba(255,255,255,0.95)', 'rgba(255,200,120,0.35)', 'transparent']}
+          style={styles.ballInnerSheen}
+          start={{ x: 0.2, y: 0.15 }}
+          end={{ x: 0.85, y: 0.75 }}
+        />
+        <View style={styles.ballHighlight} />
+        <View style={styles.ballRimLight} />
+      </View>
+      {pulse ? <View style={styles.ballPulse} pointerEvents="none" /> : null}
     </View>
   );
 }
 
-function GoldenCup({
+function PremiumCup({
   children,
   style,
 }: {
@@ -122,33 +161,50 @@ function GoldenCup({
 }) {
   return (
     <View style={[styles.cupColumn, style]}>
-      <LinearGradient
-        colors={[GOLD_HIGHLIGHT, GOLD, GOLD_DARK]}
-        style={styles.cupRim}
-        start={{ x: 0.2, y: 0 }}
-        end={{ x: 0.9, y: 1 }}
-      />
-      <View style={styles.cupBodyShell}>
+      <View style={styles.cupRimWrap}>
+        <View style={styles.cupRimShadow} />
         <LinearGradient
-          colors={[GOLD_HIGHLIGHT, GOLD, GOLD_DARK, '#5C450E']}
-          style={styles.cupBody}
-          start={{ x: 0.08, y: 0 }}
+          colors={[GOLD_RIM, GOLD_HIGHLIGHT, GOLD, GOLD_MID]}
+          style={styles.cupRim}
+          start={{ x: 0.1, y: 0 }}
           end={{ x: 0.95, y: 1 }}
         />
         <LinearGradient
-          colors={['rgba(255,255,255,0.55)', 'rgba(255,255,255,0)', 'rgba(0,0,0,0.15)']}
+          colors={['rgba(255,255,255,0.65)', 'rgba(255,255,255,0)', 'rgba(0,0,0,0.2)']}
+          style={styles.cupRimSpecular}
+          start={{ x: 0.4, y: 0 }}
+          end={{ x: 0.7, y: 0.9 }}
+        />
+      </View>
+      <View style={styles.cupBodyShell}>
+        <LinearGradient
+          colors={[GOLD_HIGHLIGHT, GOLD, GOLD_MID, GOLD_DARK, '#3d2a06']}
+          style={styles.cupBody}
+          start={{ x: 0.05, y: 0 }}
+          end={{ x: 0.98, y: 1 }}
+        />
+        <LinearGradient
+          colors={['rgba(0,0,0,0.45)', 'transparent', 'transparent']}
+          style={styles.cupBodyLeftShade}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 0.45, y: 0.5 }}
+        />
+        <LinearGradient
+          colors={['rgba(255,255,255,0.7)', 'rgba(255,255,255,0.08)', 'rgba(0,0,0,0.25)']}
           style={styles.cupBodySheen}
-          start={{ x: 0.35, y: 0 }}
-          end={{ x: 0.65, y: 1 }}
+          start={{ x: 0.32, y: 0 }}
+          end={{ x: 0.68, y: 1 }}
         />
         <View style={styles.cupHighlightStreak} />
+        <View style={styles.cupInnerRim} />
       </View>
       <LinearGradient
-        colors={[GOLD_DARK, '#4A3508', '#2A1F05']}
+        colors={[GOLD_DARK, '#2a1f08', '#140f04']}
         style={styles.cupBase}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
       />
+      <View style={styles.cupBaseEdge} />
       <View style={styles.cupInnerSlot}>{children}</View>
     </View>
   );
@@ -188,25 +244,23 @@ function FeltTextureOverlay() {
 function GameBackground() {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: BG_DEEP }]} />
       <LinearGradient
-        colors={['rgba(26,64,48,0.55)', 'rgba(13,40,24,0.15)', 'rgba(26,64,48,0.45)']}
-        locations={[0, 0.45, 1]}
+        colors={['#0f0a18', BG_DEEP, '#050810']}
+        locations={[0, 0.5, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+      <LinearGradient
+        colors={['rgba(212,175,55,0.08)', 'transparent', 'rgba(0,0,0,0.5)']}
+        locations={[0, 0.4, 1]}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
       <LinearGradient
-        colors={['rgba(0,0,0,0.42)', 'transparent', 'rgba(0,0,0,0.42)']}
+        colors={['rgba(0,0,0,0.35)', 'transparent', 'rgba(0,0,0,0.45)']}
         locations={[0, 0.5, 1]}
         start={{ x: 0, y: 0.5 }}
         end={{ x: 1, y: 0.5 }}
-        style={StyleSheet.absoluteFill}
-      />
-      <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.35)']}
-        start={{ x: 0.5, y: 0.5 }}
-        end={{ x: 0.5, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
       <FeltTextureOverlay />
@@ -250,7 +304,13 @@ function CupMotionWrapper({
     const tx = cupX[cupId].value + wobbleX[cupId].value;
     const ty =
       cupShuffleY[cupId].value + cupWatchLift[cupId].value + cupWinLift[cupId].value;
-    const deg = cupWatchRotate[cupId].value + cupWinRotate[cupId].value;
+    const shuffleLean = interpolate(
+      cupShuffleY[cupId].value,
+      [-32, 0],
+      [4.2, 0],
+      Extrapolation.CLAMP
+    );
+    const deg = cupWatchRotate[cupId].value + cupWinRotate[cupId].value + shuffleLean;
     const sc = guessScale.value * shufflePulseScale.value;
     return {
       transform: [
@@ -263,9 +323,9 @@ function CupMotionWrapper({
   });
 
   const glowStyle = useAnimatedStyle(() => ({
-    shadowOpacity: 0.22 + pickGlow.value * 0.45,
-    shadowRadius: 6 + pickGlow.value * 14,
-    elevation: 4 + Math.round(pickGlow.value * 8),
+    shadowOpacity: 0.32 + pickGlow.value * 0.42,
+    shadowRadius: 10 + pickGlow.value * 16,
+    elevation: 6 + Math.round(pickGlow.value * 10),
   }));
 
   return (
@@ -284,8 +344,8 @@ function WatchPulseTitle({ active, children }: { active: boolean; children: stri
     if (!active) return;
     pulse.value = withRepeat(
       withSequence(
-        withTiming(1.08, { duration: 700, easing: Easing.inOut(Easing.sin) }),
-        withTiming(1, { duration: 700, easing: Easing.inOut(Easing.sin) })
+        withTiming(1.02, { duration: 900, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1, { duration: 900, easing: Easing.inOut(Easing.sin) })
       ),
       -1,
       true
@@ -294,10 +354,55 @@ function WatchPulseTitle({ active, children }: { active: boolean; children: stri
   }, [active, pulse]);
   const aStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pulse.value }],
-    opacity: 0.88 + (pulse.value - 1) * 0.35,
+    opacity: 0.82 + (pulse.value - 1) * 2.5,
   }));
   if (!active) return null;
   return <Reanimated.Text style={[styles.phaseTitlePulse, aStyle]}>{children}</Reanimated.Text>;
+}
+
+function ShellStatsBar({
+  score,
+  highScore,
+  round,
+  streak,
+  newHighScore,
+  crownBannerStyle,
+}: {
+  score: number;
+  highScore: number;
+  round: number;
+  streak: number;
+  newHighScore: boolean;
+  crownBannerStyle: object;
+}) {
+  return (
+    <View style={styles.statsBarWrap}>
+      {newHighScore ? (
+        <Reanimated.Text style={[styles.statsRecordLabel, crownBannerStyle]}>New record</Reanimated.Text>
+      ) : null}
+      <View style={styles.statsPill}>
+        <View style={styles.statBlock}>
+          <Text style={styles.statLabel}>Score</Text>
+          <Text style={styles.statValue}>{score}</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statBlock}>
+          <Text style={styles.statLabel}>Round</Text>
+          <Text style={styles.statValue}>{round}</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statBlock}>
+          <Text style={styles.statLabel}>Best</Text>
+          <Text style={styles.statValueMuted}>{highScore}</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statBlock}>
+          <Text style={styles.statLabel}>Streak</Text>
+          <Text style={styles.statValueAccent}>{streak}</Text>
+        </View>
+      </View>
+    </View>
+  );
 }
 
 export default function ShellGamePlayScreen() {
@@ -426,6 +531,8 @@ export default function ShellGamePlayScreen() {
   const shellChatOpponent = amHost ? 'Guesser' : 'Host';
 
   const streakBeforeGuessRef = useRef(0);
+  const roundRef = useRef(round);
+  roundRef.current = round;
 
   const getCupX = useCallback(
     (slot: number) => layoutRef.current.baseX + slot * (CUP_SIZE + CUP_SPACING),
@@ -538,38 +645,36 @@ export default function ShellGamePlayScreen() {
   const won = state.winner === 'guesser';
   const isGuessingPhase = state.game_phase === 'guessing';
 
+  /** Phase 1: one clean lift; ball stays visible for BALL_HOLD_MS (host timer handles lower → shuffle). */
   useEffect(() => {
-    for (let c = 0; c < 3; c++) {
-      cancelAnimation(cupWatchLift[c]);
-      cancelAnimation(cupWatchRotate[c]);
-      cupWatchLift[c].value = 0;
-      cupWatchRotate[c].value = 0;
+    if (!showBallWatch || state.ball_position === null) {
+      for (let c = 0; c < 3; c++) {
+        cancelAnimation(cupWatchLift[c]);
+        cancelAnimation(cupWatchRotate[c]);
+        cupWatchLift[c].value = 0;
+        cupWatchRotate[c].value = 0;
+      }
+      return;
     }
 
-    if (!showBallWatch || state.ball_position === null) return;
-
     const i = state.ball_position;
-    cupWatchLift[i].value = withRepeat(
-      withSequence(
-        withTiming(-72, { duration: 1100, easing: Easing.inOut(Easing.cubic) }),
-        withTiming(0, { duration: 900, easing: Easing.inOut(Easing.cubic) })
-      ),
-      -1,
-      false
-    );
-    cupWatchRotate[i].value = withRepeat(
-      withSequence(
-        withTiming(-11, { duration: 1100, easing: Easing.inOut(Easing.cubic) }),
-        withTiming(0, { duration: 900, easing: Easing.inOut(Easing.cubic) })
-      ),
-      -1,
-      false
-    );
+    for (let c = 0; c < 3; c++) {
+      if (c !== i) {
+        cancelAnimation(cupWatchLift[c]);
+        cancelAnimation(cupWatchRotate[c]);
+        cupWatchLift[c].value = 0;
+        cupWatchRotate[c].value = 0;
+      }
+    }
+
+    cancelAnimation(cupWatchLift[i]);
+    cancelAnimation(cupWatchRotate[i]);
+    cupWatchLift[i].value = withSpring(-102, { damping: 14, stiffness: 200 });
+    cupWatchRotate[i].value = withSpring(-10, { damping: 15, stiffness: 210 });
+
     return () => {
       cancelAnimation(cupWatchLift[i]);
       cancelAnimation(cupWatchRotate[i]);
-      cupWatchLift[i].value = 0;
-      cupWatchRotate[i].value = 0;
     };
   }, [showBallWatch, state.ball_position, cupWatchLift, cupWatchRotate]);
 
@@ -636,7 +741,7 @@ export default function ShellGamePlayScreen() {
   }, [onShuffleAnimationsDone]);
 
   const runShuffleFromSequence = useCallback(
-    (seq: [number, number][]) => {
+    (seq: [number, number][], roundIndex: number) => {
       shuffleSeqRef.current = seq;
       setShuffling(true);
       setCanGuess(false);
@@ -656,8 +761,8 @@ export default function ShellGamePlayScreen() {
           bumpCountRef.current = 0;
           for (let cupId = 0; cupId < 3; cupId++) {
             cupShuffleY[cupId].value = withSequence(
-              withSpring(-16, { damping: 12, stiffness: 260 }),
-              withSpring(0, { damping: 14, stiffness: 200 }, (finished) => {
+              withSpring(-14, { damping: 14, stiffness: 280 }),
+              withSpring(0, { damping: 16, stiffness: 220 }, (finished) => {
                 if (finished) runOnJS(finishShuffleBumps)();
               })
             );
@@ -669,7 +774,7 @@ export default function ShellGamePlayScreen() {
         const newOrder: [number, number, number] = [...order];
         [newOrder[a], newOrder[b]] = [newOrder[b], newOrder[a]];
 
-        const swapMs = swapMsForStep(step, seqLocal.length);
+        const swapMs = swapMsForStep(step, seqLocal.length, roundIndex);
 
         let parallelDone = 0;
         const onParallelDone = () => {
@@ -686,20 +791,24 @@ export default function ShellGamePlayScreen() {
             targetX,
             {
               duration: swapMs,
-              easing: Easing.bezier(0.33, 0, 0.2, 1),
+              easing: Easing.bezier(0.4, 0, 0.2, 1),
             },
             (finished) => {
               if (finished) runOnJS(onParallelDone)();
             }
           );
           cupShuffleY[cupId].value = withSequence(
-            withTiming(-18, {
-              duration: Math.round(swapMs * 0.38),
+            withTiming(-26, {
+              duration: Math.round(swapMs * 0.4),
               easing: Easing.out(Easing.cubic),
             }),
+            withTiming(2, {
+              duration: Math.round(swapMs * 0.22),
+              easing: Easing.inOut(Easing.quad),
+            }),
             withTiming(0, {
-              duration: Math.round(swapMs * 0.62),
-              easing: Easing.inOut(Easing.cubic),
+              duration: Math.round(swapMs * 0.38),
+              easing: Easing.out(Easing.cubic),
             })
           );
         }
@@ -717,11 +826,10 @@ export default function ShellGamePlayScreen() {
       state.ball_position !== null &&
       !shuffling
     ) {
-      runShuffleFromSequence(state.shuffle_sequence);
+      runShuffleFromSequence(state.shuffle_sequence, round);
     }
-  }, [state.game_phase, state.shuffle_sequence, state.ball_position, runShuffleFromSequence, shuffling]);
+  }, [state.game_phase, state.shuffle_sequence, state.ball_position, runShuffleFromSequence, shuffling, round]);
 
-  const watchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const watchLocalOnlyRef = useRef(false);
   useEffect(() => {
     if (state.game_phase === 'shuffling' || state.game_phase === 'guessing') {
@@ -729,24 +837,69 @@ export default function ShellGamePlayScreen() {
     }
   }, [state.game_phase]);
 
+  /**
+   * After lift + ball hold: lower cup, then phase 2 (shuffle).
+   * Local / offline-fallback: setState + run shuffle. Online host: Supabase only (all clients react).
+   */
   useEffect(() => {
-    if (!amHost || isLocal || state.game_phase !== 'watching' || !gameId || gameId === 'local') {
-      return;
-    }
-    if (watchLocalOnlyRef.current) return;
-    const t = setTimeout(async () => {
+    if (!amHost || state.game_phase !== 'watching' || state.ball_position === null) return;
+    if (!isLocal && (!gameId || gameId === 'local')) return;
+
+    let cancelled = false;
+    let lowerDoneTimer: ReturnType<typeof setTimeout> | null = null;
+    const cupIdx = state.ball_position;
+
+    const startShuffle = () => {
+      if (cancelled) return;
       const seq = generateShuffleSequence();
-      await supabase
-        .from('shell_games')
-        .update({ game_phase: 'shuffling', shuffle_sequence: seq })
-        .eq('id', gameId);
-    }, WATCH_MS);
-    watchTimerRef.current = t;
-    return () => {
-      clearTimeout(t);
-      watchTimerRef.current = null;
+      const r = roundRef.current;
+      const useLocalDrive = isLocal || watchLocalOnlyRef.current;
+      if (useLocalDrive) {
+        setState((s) => ({
+          ...s,
+          game_phase: 'shuffling',
+          shuffle_sequence: seq,
+        }));
+        runShuffleFromSequence(seq, r);
+      } else {
+        void supabase
+          .from('shell_games')
+          .update({ game_phase: 'shuffling', shuffle_sequence: seq })
+          .eq('id', gameId as string);
+      }
     };
-  }, [amHost, isLocal, state.game_phase, gameId]);
+
+    const afterHold = LIFT_MS + BALL_HOLD_MS;
+    const holdTimer = setTimeout(() => {
+      if (cancelled) return;
+      cancelAnimation(cupWatchLift[cupIdx]);
+      cancelAnimation(cupWatchRotate[cupIdx]);
+      cupWatchLift[cupIdx].value = withTiming(0, {
+        duration: CUP_LOWER_MS,
+        easing: Easing.out(Easing.cubic),
+      });
+      cupWatchRotate[cupIdx].value = withTiming(0, {
+        duration: CUP_LOWER_MS,
+        easing: Easing.out(Easing.cubic),
+      });
+      lowerDoneTimer = setTimeout(startShuffle, CUP_LOWER_MS);
+    }, afterHold);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(holdTimer);
+      if (lowerDoneTimer) clearTimeout(lowerDoneTimer);
+    };
+  }, [
+    amHost,
+    isLocal,
+    gameId,
+    state.game_phase,
+    state.ball_position,
+    runShuffleFromSequence,
+    cupWatchLift,
+    cupWatchRotate,
+  ]);
 
   const handleHostPickCup = useCallback(
     async (cupId: number) => {
@@ -761,17 +914,6 @@ export default function ShellGamePlayScreen() {
           winner: null,
           guesser_choice: null,
         });
-        if (watchTimerRef.current) clearTimeout(watchTimerRef.current);
-        watchTimerRef.current = setTimeout(() => {
-          watchTimerRef.current = null;
-          const seq = generateShuffleSequence();
-          setState((s) => ({
-            ...s,
-            game_phase: 'shuffling',
-            shuffle_sequence: seq,
-          }));
-          runShuffleFromSequence(seq);
-        }, WATCH_MS);
         return;
       }
 
@@ -796,20 +938,9 @@ export default function ShellGamePlayScreen() {
           winner: null,
           guesser_choice: null,
         });
-        if (watchTimerRef.current) clearTimeout(watchTimerRef.current);
-        watchTimerRef.current = setTimeout(() => {
-          watchTimerRef.current = null;
-          const seq = generateShuffleSequence();
-          setState((s) => ({
-            ...s,
-            game_phase: 'shuffling',
-            shuffle_sequence: seq,
-          }));
-          runShuffleFromSequence(seq);
-        }, WATCH_MS);
       }
     },
-    [amHost, state.game_phase, shuffling, isLocal, gameId, runShuffleFromSequence]
+    [amHost, state.game_phase, shuffling, isLocal, gameId]
   );
 
   useEffect(() => {
@@ -995,7 +1126,7 @@ export default function ShellGamePlayScreen() {
     }
     cancelAnimation(guessScale);
     guessScale.value = 1;
-    const key = `${state.winner}-${state.guesser_choice}`;
+    const key = `${state.winner}-${state.guesser_choice}-${round}`;
     if (resultFxRef.current === key) return;
     resultFxRef.current = key;
 
@@ -1046,6 +1177,7 @@ export default function ShellGamePlayScreen() {
     crownBounce,
     guessScale,
     rewardGameEnd,
+    round,
   ]);
 
   const handleGuesserPickCup = useCallback(
@@ -1172,55 +1304,71 @@ export default function ShellGamePlayScreen() {
       <GameBackground />
 
       <Reanimated.View style={[styles.screenInner, screenShakeStyle, { paddingTop: insets.top }]}>
-        <View style={styles.topBar}>
-          <Pressable onPress={handleBack} style={styles.backBtn} hitSlop={8}>
-            <MaterialIcons name="arrow-back" size={24} color="#fff" />
-          </Pressable>
-          <View style={styles.topBarMid}>
-            {newHighScore && (
-              <Reanimated.Text style={[styles.crownBanner, crownBannerStyle]}>
-                👑 New high score!
-              </Reanimated.Text>
-            )}
-            <View style={styles.scoreRow}>
-              <MaterialIcons name="monetization-on" size={22} color={GOLD} />
-              <Text style={styles.scoreLabel}>Score: </Text>
-              <Text style={styles.scoreValue}>{score}</Text>
-              <Text style={styles.scoreBestMuted}> · Best </Text>
-              <Text style={styles.scoreValue}>{highScore}</Text>
-            </View>
-            <Text style={styles.roundLine}>
-              Round {round}
-              <Text style={styles.streakInline}>
-                {' '}
-                · Streak: {streak} 🔥
-              </Text>
-            </Text>
-          </View>
-          <View style={styles.topBarRight}>
-            <InGameChat selfName={shellChatSelf} opponentName={shellChatOpponent} opponentIsAi={false} />
-            <HowToPlayButton gameId="shell" tint={GOLD} />
-          </View>
+        <HeaderBar
+          title="Shell Game"
+          onBack={handleBack}
+          right={
+            <>
+              <InGameChat selfName={shellChatSelf} opponentName={shellChatOpponent} opponentIsAi={false} />
+              <HowToPlayButton gameId="shell" tint={GOLD} />
+            </>
+          }
+        />
+        <View style={styles.statsBarRow}>
+          <ShellStatsBar
+            score={score}
+            highScore={highScore}
+            round={round}
+            streak={streak}
+            newHighScore={newHighScore}
+            crownBannerStyle={crownBannerStyle}
+          />
         </View>
 
         <View style={styles.feltPad}>
+          <LinearGradient
+            colors={[FELT_DEEP, '#0e4a35', FELT_GREEN, '#082818', FELT_DEEP]}
+            locations={[0, 0.22, 0.48, 0.72, 1]}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+          <View style={styles.feltVignette} pointerEvents="none" />
+          <LinearGradient
+            colors={['rgba(255,255,255,0.07)', 'transparent', 'transparent']}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 0.55 }}
+            style={styles.feltTopSheen}
+            pointerEvents="none"
+          />
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.22)']}
+            start={{ x: 0.5, y: 0.35 }}
+            end={{ x: 0.5, y: 1 }}
+            style={styles.feltInnerShadow}
+            pointerEvents="none"
+          />
           <View style={styles.container}>
             {state.game_phase === 'hiding' && amHost && (
-              <ThemedText style={styles.phaseHint} darkColor="rgba(255,255,255,0.88)">
-                Tap a cup to hide the ball
+              <ThemedText style={styles.phaseHint} darkColor="rgba(255,255,255,0.82)">
+                Hide the ball
               </ThemedText>
             )}
             {state.game_phase === 'hiding' && !amHost && (
-              <ThemedText style={styles.phaseHint} darkColor="rgba(255,255,255,0.72)">
-                Waiting for host…
+              <ThemedText style={styles.phaseHint} darkColor="rgba(255,255,255,0.58)">
+                Waiting
               </ThemedText>
             )}
-            <WatchPulseTitle active={showBallWatch || shuffling}>Watch closely…</WatchPulseTitle>
+            {showBallWatch ? (
+              <WatchPulseTitle active>Memorize</WatchPulseTitle>
+            ) : shuffling ? (
+              <WatchPulseTitle active>Shuffling</WatchPulseTitle>
+            ) : null}
             {isGuessingPhase && canGuess && !shuffling && (
               <View style={styles.pickRow}>
-                <MaterialIcons name="arrow-back" size={26} color={GOLD} />
-                <Text style={styles.pickTitle}>Pick a cup!</Text>
-                <MaterialIcons name="arrow-forward" size={26} color={GOLD} />
+                <MaterialIcons name="touch-app" size={18} color={GOLD_MID} />
+                <Text style={styles.pickTitle}>Your pick</Text>
               </View>
             )}
 
@@ -1275,15 +1423,15 @@ export default function ShellGamePlayScreen() {
                         )
                       }
                     >
-                      <GoldenCup>
+                      <PremiumCup>
                         {showWatchBall && (
                           <View style={styles.ballInCup}>
-                            <ShinyBall />
+                            <GlowingBall pulse />
                           </View>
                         )}
                         {showResult && isCorrectCup && (
                           <View style={styles.ballInCup}>
-                            <ShinyBall />
+                            <GlowingBall />
                           </View>
                         )}
                         {showResult && isWrongGuess && (
@@ -1291,12 +1439,18 @@ export default function ShellGamePlayScreen() {
                             <Text style={styles.emptyXText}>✕</Text>
                           </View>
                         )}
-                      </GoldenCup>
+                      </PremiumCup>
                     </Pressable>
                   </CupMotionWrapper>
                 );
               })}
             </View>
+
+            {isGuessingPhase && !shuffling && !showResult ? (
+              <Text style={styles.cupsHint} accessibilityRole="text">
+                Tap the shell with the ball
+              </Text>
+            ) : null}
 
             {showResult && (
               <View style={styles.resultWrap}>
@@ -1322,9 +1476,11 @@ export default function ShellGamePlayScreen() {
 
             {streakLostVisible && (
               <Reanimated.View style={[styles.streakLostBanner, streakLostAnimStyle]}>
-                <Text style={styles.streakLostText}>Streak Lost! 💔</Text>
+                <Text style={styles.streakLostText}>Streak broken</Text>
               </Reanimated.View>
             )}
+
+            <View style={styles.boardSpacer} />
 
             <View style={styles.roomCodeWrap}>
               <Text style={styles.roomCode}>{roomCode}</Text>
@@ -1346,122 +1502,202 @@ const styles = StyleSheet.create({
   feltLine: {
     position: 'absolute',
     width: StyleSheet.hairlineWidth * 2,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
     transform: [{ rotate: '45deg' }],
   },
   screenInner: { flex: 1 },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingTop: 8,
+  statsBarRow: {
+    paddingHorizontal: 10,
     paddingBottom: 6,
+    alignItems: 'center',
   },
-  topBarMid: { flex: 1, alignItems: 'center', paddingHorizontal: 4 },
-  crownBanner: {
+  statsBarWrap: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 6,
+  },
+  statsRecordLabel: {
+    fontSize: 11,
+    fontWeight: '700',
     color: GOLD_HIGHLIGHT,
-    fontWeight: '900',
-    fontSize: 13,
-    marginBottom: 4,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
   },
-  scoreRow: {
+  statsPill: {
     flexDirection: 'row',
+    alignItems: 'stretch',
+    justifyContent: 'space-between',
+    width: '100%',
+    maxWidth: 340,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(212,175,55,0.22)',
+  },
+  statBlock: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    flexWrap: 'wrap',
-    gap: 4,
+    minWidth: 0,
   },
-  scoreLabel: {
-    color: 'rgba(255,255,255,0.88)',
-    fontSize: 15,
+  statLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.45)',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  statValue: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#fff',
+    fontVariant: ['tabular-nums'],
+  },
+  statValueMuted: {
+    fontSize: 17,
     fontWeight: '700',
-  },
-  scoreValue: { color: '#fff', fontSize: 16, fontWeight: '900' },
-  scoreBestMuted: { color: 'rgba(255,255,255,0.65)', fontSize: 14, fontWeight: '600' },
-  roundLine: {
     color: 'rgba(255,255,255,0.72)',
-    fontSize: 12,
-    fontWeight: '700',
-    marginTop: 4,
-    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
   },
-  streakInline: { color: GOLD_HIGHLIGHT, fontWeight: '800' },
-  topBarRight: { flexDirection: 'row', alignItems: 'center' },
-  backBtn: { padding: 4, marginTop: 2 },
+  statValueAccent: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: GOLD_HIGHLIGHT,
+    fontVariant: ['tabular-nums'],
+  },
+  statDivider: {
+    width: StyleSheet.hairlineWidth,
+    alignSelf: 'stretch',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    marginVertical: 2,
+  },
   feltPad: {
-    flex: 1,
+    alignSelf: 'stretch',
+    flexGrow: 0,
+    flexShrink: 1,
     marginHorizontal: 10,
     marginBottom: 10,
-    borderRadius: 20,
-    backgroundColor: FELT_PAD,
-    borderWidth: 1.5,
-    borderColor: 'rgba(201,162,39,0.22)',
+    borderRadius: 22,
+    backgroundColor: WOOD_DARK,
+    borderWidth: 3,
+    borderColor: WOOD_EDGE,
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.45,
-    shadowRadius: 14,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.55,
+    shadowRadius: 20,
+    elevation: 14,
+  },
+  feltVignette: {
+    ...StyleSheet.absoluteFillObject,
+    borderWidth: 10,
+    borderColor: 'rgba(0,0,0,0.28)',
+    borderRadius: 18,
+  },
+  feltTopSheen: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '32%',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+  },
+  feltInnerShadow: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 18,
   },
   container: {
-    flex: 1,
-    paddingHorizontal: 12,
+    width: '100%',
+    paddingHorizontal: 10,
+    paddingTop: 4,
+    paddingBottom: 12,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
   },
   centered: { justifyContent: 'center', alignItems: 'center', gap: 16 },
-  phaseHint: { fontSize: Typography.body, marginBottom: 8, textAlign: 'center' },
-  phaseTitlePulse: {
-    fontSize: 26,
-    fontWeight: '900',
-    marginBottom: 16,
+  phaseHint: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 4,
     textAlign: 'center',
-    color: '#fff',
-    letterSpacing: 0.3,
+    letterSpacing: 0.4,
+  },
+  phaseTitlePulse: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 8,
+    textAlign: 'center',
+    color: 'rgba(255,255,255,0.88)',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
   },
   pickRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
-    marginBottom: 16,
+    gap: 8,
+    marginBottom: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(212,175,55,0.2)',
   },
   pickTitle: {
-    fontSize: 26,
-    fontWeight: '900',
-    color: '#fff',
-    letterSpacing: 0.2,
+    fontSize: 15,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.92)',
+    letterSpacing: 0.3,
   },
   cupsContainer: {
     width: '100%',
-    minHeight: CUP_BODY_H + RIM_H + BASE_H + 72,
+    marginTop: 24,
+    minHeight: CUP_BODY_H + RIM_H + BASE_H + 48,
     position: 'relative',
     alignItems: 'center',
     justifyContent: 'flex-end',
   },
+  cupsHint: {
+    marginTop: 14,
+    fontSize: 14,
+    fontWeight: '500',
+    color: dsColors.textSecondary,
+    textAlign: 'center',
+    paddingHorizontal: 16,
+    letterSpacing: 0.2,
+  },
   cupOuter: {
     position: 'absolute',
     left: 0,
-    bottom: 10,
+    bottom: 28,
     width: CUP_SIZE,
     alignItems: 'center',
   },
+  boardSpacer: {
+    width: '100%',
+    height: 16,
+  },
   cupGlowWrap: {
     alignItems: 'center',
-    shadowColor: GOLD,
-    shadowOffset: { width: 0, height: 10 },
-    shadowRadius: 12,
-    shadowOpacity: 0.35,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowRadius: 26,
+    shadowOpacity: 0.62,
+    elevation: 16,
   },
   cupTableShadow: {
     position: 'absolute',
-    bottom: -6,
-    width: CUP_SIZE * 0.88,
-    height: 18,
+    bottom: -10,
+    width: CUP_SIZE * 0.95,
+    height: 28,
     borderRadius: 999,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    opacity: 0.55,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    opacity: 0.72,
   },
   cupHit: {
     width: CUP_SIZE,
@@ -1473,45 +1709,77 @@ const styles = StyleSheet.create({
   cupColumn: {
     width: CUP_SIZE,
     alignItems: 'center',
+    position: 'relative',
+  },
+  cupRimWrap: {
+    width: RIM_W,
+    height: RIM_H,
+    marginBottom: -3,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    zIndex: 4,
+  },
+  cupRimShadow: {
+    position: 'absolute',
+    bottom: -4,
+    width: RIM_W * 0.95,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 0,
   },
   cupRim: {
     width: RIM_W,
     height: RIM_H,
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-    marginBottom: -2,
-    zIndex: 3,
+    borderTopLeftRadius: 14,
+    borderTopRightRadius: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,248,220,0.55)',
+    zIndex: 1,
     shadowColor: GOLD_HIGHLIGHT,
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.5,
-    shadowRadius: 5,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.65,
+    shadowRadius: 8,
+  },
+  cupRimSpecular: {
+    ...StyleSheet.absoluteFillObject,
+    borderTopLeftRadius: 14,
+    borderTopRightRadius: 14,
+    zIndex: 2,
+    opacity: 0.9,
   },
   cupBodyShell: {
     position: 'relative',
     width: CUP_BODY_W,
     height: CUP_BODY_H,
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
+    borderTopLeftRadius: 10,
+    borderTopRightRadius: 10,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
     overflow: 'hidden',
     zIndex: 2,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.55,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.72,
+    shadowRadius: 16,
+    elevation: 14,
   },
   cupBody: {
     ...StyleSheet.absoluteFillObject,
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.35)',
+    borderTopLeftRadius: 10,
+    borderTopRightRadius: 10,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    borderWidth: 1.5,
+    borderColor: 'rgba(0,0,0,0.45)',
+  },
+  cupBodyLeftShade: {
+    ...StyleSheet.absoluteFillObject,
+    borderTopLeftRadius: 10,
+    borderTopRightRadius: 10,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    opacity: 0.55,
   },
   cupBodySheen: {
     ...StyleSheet.absoluteFillObject,
@@ -1519,27 +1787,45 @@ const styles = StyleSheet.create({
   },
   cupHighlightStreak: {
     position: 'absolute',
-    left: '18%',
-    top: '8%',
-    width: '22%',
-    height: '72%',
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.38)',
-    opacity: 0.55,
-    transform: [{ skewY: '-8deg' }],
+    left: '14%',
+    top: '6%',
+    width: '26%',
+    height: '78%',
+    borderRadius: 5,
+    backgroundColor: 'rgba(255,255,255,0.42)',
+    opacity: 0.5,
+    transform: [{ skewY: '-10deg' }],
+  },
+  cupInnerRim: {
+    position: 'absolute',
+    bottom: 0,
+    left: '6%',
+    right: '6%',
+    height: 10,
+    borderTopLeftRadius: 6,
+    borderTopRightRadius: 6,
+    backgroundColor: 'rgba(0,0,0,0.2)',
   },
   cupBase: {
     width: BASE_W,
     height: BASE_H,
-    borderBottomLeftRadius: 8,
-    borderBottomRightRadius: 8,
-    marginTop: -1,
+    borderBottomLeftRadius: 10,
+    borderBottomRightRadius: 10,
+    marginTop: -2,
     zIndex: 1,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.4,
-    shadowRadius: 3,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.55,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+  cupBaseEdge: {
+    width: BASE_W * 1.08,
+    height: 3,
+    marginTop: -1,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,220,120,0.25)',
+    zIndex: 1,
   },
   cupInnerSlot: {
     ...StyleSheet.absoluteFillObject,
@@ -1549,36 +1835,78 @@ const styles = StyleSheet.create({
     bottom: BASE_H + 4,
   },
   ballInCup: {
-    marginTop: 8,
+    marginTop: 6,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  ballGlowOuter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: BALL_SZ + 40,
+    height: BALL_SZ + 40,
+  },
+  ballGlowRing: {
+    position: 'absolute',
+    width: BALL_SZ + 26,
+    height: BALL_SZ + 26,
+    borderRadius: (BALL_SZ + 26) / 2,
+    backgroundColor: 'rgba(255, 100, 40, 0.28)',
+    shadowColor: '#FF6600',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  ballPulse: {
+    position: 'absolute',
+    width: BALL_SZ + 34,
+    height: BALL_SZ + 34,
+    borderRadius: (BALL_SZ + 34) / 2,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 200, 120, 0.65)',
+    backgroundColor: 'rgba(255, 80, 30, 0.08)',
   },
   ballWrap: {
     width: BALL_SZ,
     height: BALL_SZ,
     borderRadius: BALL_SZ / 2,
     overflow: 'hidden',
-    shadowColor: '#7F1D1D',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.5,
-    shadowRadius: 3,
-    elevation: 4,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 200, 100, 0.5)',
+    shadowColor: '#FF2200',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.85,
+    shadowRadius: 10,
+    elevation: 10,
   },
   ballCircle: {
     width: BALL_SZ,
     height: BALL_SZ,
     borderRadius: BALL_SZ / 2,
   },
+  ballInnerSheen: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: BALL_SZ / 2,
+  },
   ballHighlight: {
     position: 'absolute',
-    top: 5,
-    left: 7,
-    width: 11,
-    height: 8,
-    borderRadius: 5,
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    opacity: 0.95,
-    transform: [{ rotate: '-28deg' }],
+    top: 7,
+    left: 9,
+    width: 14,
+    height: 10,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    opacity: 0.92,
+    transform: [{ rotate: '-32deg' }],
+  },
+  ballRimLight: {
+    position: 'absolute',
+    bottom: 5,
+    right: 8,
+    width: 10,
+    height: 6,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,200,0.35)',
   },
   emptyX: {
     marginTop: 16,
@@ -1605,7 +1933,7 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
-  resultWrap: { alignItems: 'center', marginTop: 20 },
+  resultWrap: { alignItems: 'center', marginTop: 10 },
   resultText: { fontSize: 28, fontWeight: '900', textAlign: 'center' },
   resultWin: { color: '#4ADE80' },
   resultLose: { color: '#F87171' },
@@ -1630,7 +1958,12 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(248,113,113,0.4)',
   },
   streakLostText: { color: '#FECACA', fontWeight: '900', fontSize: 16 },
-  roomCodeWrap: { position: 'absolute', bottom: 14 },
+  roomCodeWrap: {
+    marginTop: 8,
+    width: '100%',
+    alignItems: 'center',
+    paddingBottom: 4,
+  },
   roomCode: {
     fontSize: Typography.section,
     fontWeight: '800',

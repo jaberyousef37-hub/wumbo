@@ -7,6 +7,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { HeaderBar, StatCard } from '@/components/design-system';
 import { Avatar } from '@/components/avatar';
 import { BaseCard } from '@/components/base-card';
 import { ThemedText } from '@/components/themed-text';
@@ -97,6 +98,9 @@ export default function ProfileScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
+          <View style={styles.headerBarBleed}>
+            <HeaderBar title="Profile" />
+          </View>
           <Pressable onPress={pickImage} style={styles.avatarWrap}>
             <View
               style={[
@@ -179,42 +183,9 @@ export default function ProfileScreen() {
           </View>
 
           <View style={styles.statsRow}>
-            <View style={styles.statCardWrap}>
-              <BaseCard>
-                <View style={styles.statContent}>
-                  <ThemedText type="section" style={styles.statValue}>
-                    {STATS.gamesPlayed}
-                  </ThemedText>
-                  <ThemedText type="caption" style={{ color: AppColors.muted }}>
-                    Games
-                  </ThemedText>
-                </View>
-              </BaseCard>
-            </View>
-            <View style={styles.statCardWrap}>
-              <BaseCard>
-                <View style={styles.statContent}>
-                  <ThemedText type="section" style={styles.statValue}>
-                    {STATS.wins}
-                  </ThemedText>
-                  <ThemedText type="caption" style={{ color: AppColors.muted }}>
-                    Wins
-                  </ThemedText>
-                </View>
-              </BaseCard>
-            </View>
-            <View style={styles.statCardWrap}>
-              <BaseCard>
-                <View style={styles.statContent}>
-                  <ThemedText type="section" style={styles.statValue}>
-                    {winRate}%
-                  </ThemedText>
-                  <ThemedText type="caption" style={{ color: AppColors.muted }}>
-                    Win rate
-                  </ThemedText>
-                </View>
-              </BaseCard>
-            </View>
+            <StatCard style={styles.statFlex} value={STATS.gamesPlayed} label="Games" />
+            <StatCard style={styles.statFlex} value={STATS.wins} label="Wins" />
+            <StatCard style={styles.statFlex} value={`${winRate}%`} label="Win rate" />
           </View>
 
           <Pressable
@@ -385,6 +356,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: SECTION_GAP,
   },
+  headerBarBleed: {
+    marginHorizontal: -Spacing.sm,
+    alignSelf: 'stretch',
+  },
   avatarWrap: {
     marginTop: Spacing.sm,
     position: 'relative',
@@ -454,12 +429,10 @@ const styles = StyleSheet.create({
   xpFill: { height: '100%', borderRadius: 3 },
   statsRow: {
     flexDirection: 'row',
-    gap: CARD_GAP,
+    gap: 12,
     width: '100%',
   },
-  statCardWrap: { flex: 1 },
-  statContent: { alignItems: 'center' },
-  statValue: { marginBottom: Spacing.xs },
+  statFlex: { flex: 1 },
   leaderboardRow: {
     flexDirection: 'row',
     alignItems: 'center',

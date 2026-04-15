@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PanResponder, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { HeaderBar } from '@/components/design-system';
 import { GameResultsSummary } from '@/components/game-results-summary';
 import { HowToPlayButton } from '@/components/how-to-play-button';
 import { PrimaryButton } from '@/components/primary-button';
@@ -248,15 +249,13 @@ export default function SnakeScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: BG_DARK }]} edges={['bottom', 'left', 'right']}>
-      <View style={[styles.container, { paddingTop: insets.top, paddingBottom: 8 }]}>
-        <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
-            <MaterialIcons name="arrow-back" size={24} color="#fff" />
-          </Pressable>
-          <ThemedText type="defaultSemiBold" style={styles.title} darkColor="#fff">
-            Snake
-          </ThemedText>
-          <HowToPlayButton gameId="snake" tint="#fff" />
+      <View style={{ paddingTop: insets.top }}>
+        <HeaderBar
+          title="Snake"
+          onBack={() => router.back()}
+          right={<HowToPlayButton gameId="snake" tint="#FFFFFF" />}
+        />
+        <View style={styles.scoreStrip}>
           <View style={styles.scores}>
             <ThemedText style={styles.scoreText}>Score: {score}</ThemedText>
             <ThemedText style={styles.highScoreText}>Best: {Math.max(score, highScore)}</ThemedText>
@@ -265,7 +264,9 @@ export default function SnakeScreen() {
             </ThemedText>
           </View>
         </View>
+      </View>
 
+      <View style={[styles.container, { paddingBottom: 8 }]}>
         <ThemedText style={styles.swipeHint} darkColor="rgba(255,255,255,0.55)">
           Swipe on the grid — or use arrows below
         </ThemedText>
@@ -364,14 +365,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: 'center',
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  scoreStrip: {
     width: '100%',
-    marginBottom: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    alignItems: 'flex-end',
   },
-  backBtn: { marginRight: 12 },
-  title: { fontSize: 20, flex: 1, minWidth: 0 },
   scores: { alignItems: 'flex-end' },
   scoreText: { color: '#00ff88', fontSize: 16, fontWeight: '700' },
   highScoreText: { color: AppColors.textSecondary, fontSize: 14 },

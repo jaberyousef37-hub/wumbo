@@ -2,7 +2,6 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
@@ -10,16 +9,17 @@ import { BaseCard } from '@/components/base-card';
 import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/contexts/theme-context';
 import { AppColors, Colors } from '@/constants/theme';
-import {
-  CARD_GAP,
-  SECTION_GAP,
-  SCREEN_PADDING,
-  Spacing,
-} from '@/constants/spacing';
+import { SECTION_GAP, SCREEN_PADDING, Spacing } from '@/constants/spacing';
 import { FAKE_FRIENDS, type Friend, type FriendRequest } from '@/lib/friends-data';
 import { CHALLENGE_GAME_PICKS } from '@/lib/challenge-games';
 import { generateRoomCode } from '@/lib/room-utils';
 import { ICON_SIZE_CARD, ICON_SIZE_NAV } from '@/constants/typography';
+
+/** Chat list — premium purple accents (list screen only) */
+const PURPLE_MUTED = 'rgba(124, 58, 237, 0.14)';
+const PURPLE_RING = 'rgba(124, 58, 237, 0.5)';
+const PURPLE_SOFT = 'rgba(124, 58, 237, 0.22)';
+const PURPLE_TAB_ACTIVE = 'rgba(124, 58, 237, 0.38)';
 
 const CONVERSATIONS: {
   id: string;
@@ -59,89 +59,87 @@ type Tab = 'chats' | 'friends';
 
 function ChatRoomCard({
   room,
-  index,
 }: {
   room: (typeof CONVERSATIONS)[0];
-  index: number;
 }) {
   const router = useRouter();
   const { isDark } = useTheme();
   const palette = isDark ? Colors.dark : Colors.light;
 
   return (
-    <Animated.View entering={FadeInDown.delay(index * 80).springify().damping(16)}>
+    <View style={styles.listCardWrap}>
       <BaseCard
         onPress={() => router.push(`/(tabs)/chat/${room.id}`)}
         showChevron
+        style={styles.listCardInner}
       >
         <View style={styles.roomRow}>
-          <Avatar initials={room.name} size="medium" />
+          <View style={styles.avatarRing}>
+            <Avatar initials={room.name} size="medium" />
+          </View>
           <View style={styles.roomMain}>
             <View style={styles.roomTop}>
-              <View style={styles.nameRow}>
-                <ThemedText type="defaultSemiBold" style={styles.roomName} numberOfLines={1}>
-                  {room.name}
-                </ThemedText>
-                {room.isGameInvite && (
-                  <View style={styles.gameBadge} accessibilityLabel="Game invite">
-                    <ThemedText style={styles.gameBadgeEmoji}>🎮</ThemedText>
-                  </View>
-                )}
-              </View>
-              <ThemedText
-                type="caption"
-                style={styles.timestamp}
-                lightColor={Colors.light.icon}
-                darkColor={Colors.dark.icon}
-              >
-                {room.timestamp}
-              </ThemedText>
-            </View>
-            <View style={styles.roomBottom}>
-              <ThemedText
-                type="body"
-                style={[
-                  styles.lastMessage,
-                  { color: palette.text },
-                  room.unreadCount > 0 && styles.lastMessageUnread,
-                ]}
-                numberOfLines={1}
-              >
-                {room.lastMessage}
-              </ThemedText>
-              {room.unreadCount > 0 && (
-                <View style={[styles.badge, { backgroundColor: 'rgba(124, 58, 237, 0.25)' }]}>
-                  <ThemedText type="caption" style={styles.badgeText}>
-                    {room.unreadCount > 99 ? '99+' : room.unreadCount}
+              <View style={styles.nameBlock}>
+                <View style={styles.nameRow}>
+                  <ThemedText type="defaultSemiBold" style={styles.roomName} numberOfLines={1}>
+                    {room.name}
+                  </ThemedText>
+                  {room.isGameInvite && (
+                    <View style={styles.gameBadge} accessibilityLabel="Game invite">
+                      <ThemedText style={styles.gameBadgeEmoji}>🎮</ThemedText>
+                    </View>
+                  )}
+                </View>
+                <View style={styles.roomBottom}>
+                  <ThemedText
+                    type="body"
+                    style={[
+                      styles.lastMessage,
+                      { color: palette.text },
+                      room.unreadCount > 0 && styles.lastMessageUnread,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {room.lastMessage}
                   </ThemedText>
                 </View>
-              )}
+              </View>
+              <View style={styles.roomMetaCol}>
+                <Text style={[styles.timestamp, { color: AppColors.textSecondary }]}>{room.timestamp}</Text>
+                {room.unreadCount > 0 ? (
+                  <View style={styles.unreadBadge}>
+                    <Text style={styles.unreadBadgeText}>
+                      {room.unreadCount > 99 ? '99+' : room.unreadCount}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
             </View>
           </View>
         </View>
       </BaseCard>
-    </Animated.View>
+    </View>
   );
 }
 
 function FriendCard({
   friend,
-  index,
   onPress,
 }: {
   friend: Friend;
-  index: number;
   onPress: () => void;
 }) {
   const { isDark } = useTheme();
   const palette = isDark ? Colors.dark : Colors.light;
 
   return (
-    <Animated.View entering={FadeInDown.delay(index * 60).springify().damping(16)}>
-      <BaseCard onPress={onPress} showChevron>
+    <View style={styles.listCardWrap}>
+      <BaseCard onPress={onPress} showChevron style={styles.listCardInner}>
         <View style={styles.friendRow}>
           <View style={styles.avatarWrap}>
-            <Avatar initials={friend.avatar} size="medium" />
+            <View style={styles.avatarRing}>
+              <Avatar initials={friend.avatar} size="medium" />
+            </View>
             <View
               style={[
                 styles.statusDot,
@@ -164,7 +162,7 @@ function FriendCard({
           </View>
         </View>
       </BaseCard>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -181,9 +179,12 @@ function FriendRequestCard({
   const palette = isDark ? Colors.dark : Colors.light;
 
   return (
-    <BaseCard>
-      <View style={styles.requestRow}>
-        <Avatar initials={request.senderAvatar} size="medium" />
+    <View style={styles.listCardWrap}>
+      <BaseCard style={styles.listCardInner}>
+        <View style={styles.requestRow}>
+          <View style={styles.avatarRing}>
+            <Avatar initials={request.senderAvatar} size="medium" />
+          </View>
         <View style={styles.requestInfo}>
           <ThemedText type="defaultSemiBold" style={styles.requestName}>
             {request.senderName}
@@ -218,7 +219,8 @@ function FriendRequestCard({
           </Pressable>
         </View>
       </View>
-    </BaseCard>
+      </BaseCard>
+    </View>
   );
 }
 
@@ -398,7 +400,7 @@ export default function ChatScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['bottom', 'left', 'right']}>
-      <Animated.View entering={FadeIn.duration(400)} style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.header}>
           <View style={styles.headerTitles}>
             <ThemedText type="title" style={styles.headerTitle}>
@@ -436,47 +438,51 @@ export default function ChatScreen() {
           </View>
         </View>
 
-        {/* Tabs */}
-        <View style={[styles.tabRow, { borderColor: palette.cardBorder }]}>
-          <Pressable
-            onPress={() => setActiveTab('chats')}
-            style={[
-              styles.tab,
-              activeTab === 'chats' && { borderBottomColor: palette.tint, borderBottomWidth: 2 },
-            ]}
-          >
-            <ThemedText
-              style={[
-                styles.tabLabel,
-                activeTab === 'chats' && { color: palette.tint, fontWeight: '700' },
+        {/* Tabs — segmented control */}
+        <View style={styles.tabSegmentWrap}>
+          <View style={[styles.tabSegment, { backgroundColor: PURPLE_MUTED }]}>
+            <Pressable
+              onPress={() => setActiveTab('chats')}
+              style={({ pressed }) => [
+                styles.tabSegmentBtn,
+                activeTab === 'chats' && [styles.tabSegmentBtnActive, { backgroundColor: PURPLE_TAB_ACTIVE }],
+                pressed && styles.tabSegmentPressed,
               ]}
             >
-              Chats
-            </ThemedText>
-          </Pressable>
-          <Pressable
-            onPress={() => setActiveTab('friends')}
-            style={[
-              styles.tab,
-              activeTab === 'friends' && { borderBottomColor: palette.tint, borderBottomWidth: 2 },
-            ]}
-          >
-            <ThemedText
-              style={[
-                styles.tabLabel,
-                activeTab === 'friends' && { color: palette.tint, fontWeight: '700' },
+              <Text
+                style={[
+                  styles.tabSegmentLabel,
+                  { color: activeTab === 'chats' ? '#FFFFFF' : AppColors.textSecondary },
+                ]}
+              >
+                Chats
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setActiveTab('friends')}
+              style={({ pressed }) => [
+                styles.tabSegmentBtn,
+                activeTab === 'friends' && [styles.tabSegmentBtnActive, { backgroundColor: PURPLE_TAB_ACTIVE }],
+                pressed && styles.tabSegmentPressed,
               ]}
             >
-              Friends
-            </ThemedText>
-            {pendingRequests.length > 0 && (
-              <View style={[styles.tabBadge, { backgroundColor: palette.accentPink }]}>
-                <ThemedText style={styles.tabBadgeText}>
-                  {pendingRequests.length}
-                </ThemedText>
+              <View style={styles.tabSegmentLabelRow}>
+                <Text
+                  style={[
+                    styles.tabSegmentLabel,
+                    { color: activeTab === 'friends' ? '#FFFFFF' : AppColors.textSecondary },
+                  ]}
+                >
+                  Friends
+                </Text>
+                {pendingRequests.length > 0 && (
+                  <View style={styles.tabSegmentPill}>
+                    <Text style={styles.tabSegmentPillText}>{pendingRequests.length}</Text>
+                  </View>
+                )}
               </View>
-            )}
-          </Pressable>
+            </Pressable>
+          </View>
         </View>
 
         {activeTab === 'chats' ? (
@@ -500,7 +506,7 @@ export default function ChatScreen() {
                 </Pressable>
               </View>
             ) : (
-              CONVERSATIONS.map((room, index) => <ChatRoomCard key={room.id} room={room} index={index} />)
+              CONVERSATIONS.map((room) => <ChatRoomCard key={room.id} room={room} />)
             )}
           </ScrollView>
         ) : (
@@ -558,11 +564,10 @@ export default function ChatScreen() {
                   </Pressable>
                 </View>
               ) : (
-                FAKE_FRIENDS.map((friend, index) => (
+                FAKE_FRIENDS.map((friend) => (
                   <FriendCard
                     key={friend.id}
                     friend={friend}
-                    index={index}
                     onPress={() => {
                       setSelectedFriend(friend);
                       setShowFriendOptions(true);
@@ -573,7 +578,7 @@ export default function ChatScreen() {
             </View>
           </ScrollView>
         )}
-      </Animated.View>
+      </View>
 
       <FriendOptionsModal
         visible={showFriendOptions}
@@ -628,35 +633,66 @@ const styles = StyleSheet.create({
   },
   headerAction: { alignItems: 'center', minWidth: 64 },
   headerActionLabel: { marginTop: 4, textAlign: 'center' },
-  tabRow: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    paddingHorizontal: Spacing.md,
+  tabSegmentWrap: {
+    paddingHorizontal: SCREEN_PADDING,
+    paddingBottom: Spacing.md,
+    paddingTop: Spacing.xs,
   },
-  tab: {
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    marginBottom: -1,
+  tabSegment: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
+    borderRadius: 14,
+    padding: 4,
+    gap: 4,
   },
-  tabLabel: { fontSize: 16 },
-  tabBadge: {
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
+  tabSegmentBtn: {
+    flex: 1,
+    paddingVertical: 11,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 6,
   },
-  tabBadgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  tabSegmentBtnActive: {},
+  tabSegmentPressed: { opacity: 0.92 },
+  tabSegmentLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  tabSegmentLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tabSegmentPill: {
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabSegmentPillText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
+  listCardWrap: {
+    marginBottom: Spacing.xs,
+  },
+  listCardInner: {
+    borderColor: 'rgba(124, 58, 237, 0.18)',
+  },
+  avatarRing: {
+    padding: 2,
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: PURPLE_RING,
+    backgroundColor: 'rgba(124, 58, 237, 0.07)',
+  },
   scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: SCREEN_PADDING,
     paddingBottom: Spacing.lg,
-    paddingTop: Spacing.md,
-    gap: CARD_GAP,
+    paddingTop: Spacing.sm,
+    gap: Spacing.md,
   },
   section: { marginBottom: SECTION_GAP },
   sectionHeader: {
@@ -665,20 +701,26 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: Spacing.sm,
   },
-  sectionTitle: { fontSize: 16, marginBottom: Spacing.sm },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    opacity: 0.85,
+    marginBottom: Spacing.sm,
+  },
   roomRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flex: 1,
-    gap: Spacing.xs,
+    gap: Spacing.md,
   },
-  roomMain: { flex: 1, marginLeft: Spacing.sm, minWidth: 0 },
+  roomMain: { flex: 1, minWidth: 0 },
   roomTop: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: Spacing.xs,
-    gap: Spacing.xs,
+    gap: Spacing.md,
   },
   nameRow: {
     flex: 1,
@@ -689,29 +731,50 @@ const styles = StyleSheet.create({
   },
   roomName: { flexShrink: 1 },
   gameBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
     borderRadius: 8,
-    backgroundColor: 'rgba(124, 58, 237, 0.22)',
+    backgroundColor: PURPLE_SOFT,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(124, 58, 237, 0.35)',
   },
   gameBadgeEmoji: { fontSize: 12 },
-  timestamp: {},
+  timestamp: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.15,
+    textAlign: 'right',
+  },
+  roomMetaCol: {
+    alignItems: 'flex-end',
+    justifyContent: 'flex-start',
+    gap: 8,
+    minWidth: 76,
+    paddingTop: 2,
+  },
+  nameBlock: { flex: 1, minWidth: 0 },
   roomBottom: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
+    marginTop: 4,
   },
   lastMessage: { flex: 1 },
   lastMessageUnread: { fontWeight: '700' },
-  badge: {
+  unreadBadge: {
     minWidth: 22,
     height: 22,
+    paddingHorizontal: 7,
     borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 6,
+    backgroundColor: AppColors.tint,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
   },
-  badgeText: { fontWeight: '600', color: '#7C3AED' },
+  unreadBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
   friendRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -726,14 +789,14 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 2,
   },
-  friendMain: { flex: 1, marginLeft: Spacing.sm },
+  friendMain: { flex: 1, marginLeft: Spacing.md },
   friendName: { fontSize: 16, marginBottom: 2 },
   friendMeta: { fontSize: 14 },
   requestRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  requestInfo: { flex: 1, marginLeft: Spacing.sm },
+  requestInfo: { flex: 1, marginLeft: Spacing.md },
   requestName: { fontSize: 16, marginBottom: 2 },
   requestUsername: { fontSize: 14 },
   requestActions: { flexDirection: 'row', gap: Spacing.xs },

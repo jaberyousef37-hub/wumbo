@@ -21,6 +21,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { HeaderBar } from '@/components/design-system';
 import { HowToPlayButton } from '@/components/how-to-play-button';
 import { ThemedText } from '@/components/themed-text';
 import { WinnerModal } from '@/components/winner-modal';
@@ -412,15 +413,11 @@ export default function SnakesLaddersScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
       <View style={{ flex: 1, paddingTop: insets.top }}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.backBtn, pressed && styles.pressed]}>
-          <MaterialIcons name="arrow-back" size={24} color={TextColors.primary} />
-        </Pressable>
-        <ThemedText type="title" style={styles.headerTitle}>
-          Snakes & Ladders
-        </ThemedText>
-        <HowToPlayButton gameId="snakes-ladders" tint={TextColors.primary} />
-      </View>
+      <HeaderBar
+        title="Snakes & Ladders"
+        onBack={() => router.back()}
+        right={<HowToPlayButton gameId="snakes-ladders" tint="#FFFFFF" />}
+      />
 
       {phase === 'setup' ? (
         <ScrollView contentContainerStyle={styles.setupScroll} keyboardShouldPersistTaps="handled">
@@ -635,15 +632,6 @@ export default function SnakesLaddersScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: BG },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.sm,
-    gap: Spacing.sm,
-  },
-  backBtn: { padding: 8 },
-  headerTitle: { flex: 1 },
   pressed: { opacity: 0.88 },
   setupScroll: { padding: Spacing.md, gap: Spacing.md, paddingBottom: Spacing.lg + Spacing.md },
   setupHead: {},

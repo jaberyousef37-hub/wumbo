@@ -1,8 +1,10 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
+  Easing,
   FadeIn,
   useAnimatedStyle,
   useSharedValue,
@@ -14,8 +16,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
 import { ThemedText } from '@/components/themed-text';
+import { colors as dsColors } from '@/constants/design-system/theme';
 import { AppColors } from '@/constants/theme';
-import { CARD_GAP, SECTION_GAP, Spacing } from '@/constants/spacing';
+import { CARD_GAP, Spacing } from '@/constants/spacing';
 
 const BG = AppColors.background;
 const ACCENT = AppColors.tint;
@@ -61,6 +64,30 @@ function PulsingDot() {
   return <Animated.View style={[styles.pulsingDot, animatedStyle]} />;
 }
 
+/** Centered empty-state illustration with a gentle scale pulse */
+function PulsingEmptyIllustration() {
+  const pulse = useSharedValue(1);
+  useEffect(() => {
+    pulse.value = withRepeat(
+      withSequence(
+        withTiming(1.06, { duration: 1400, easing: Easing.inOut(Easing.ease) }),
+        withTiming(1, { duration: 1400, easing: Easing.inOut(Easing.ease) }),
+      ),
+      -1,
+      false,
+    );
+  }, [pulse]);
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pulse.value }],
+    opacity: 0.8,
+  }));
+  return (
+    <Animated.View style={[styles.emptyIllustrationWrap, animatedStyle]} accessibilityRole="image">
+      <MaterialIcons name="groups" size={72} color={ACCENT} />
+    </Animated.View>
+  );
+}
+
 function filterRooms(rooms: RoomRow[], f: RoomFilter): RoomRow[] {
   if (f === 'all') return rooms;
   if (f === 'friends') return rooms.filter((r) => r.friends);
@@ -104,16 +131,23 @@ export default function RoomsScreen() {
         >
           {filteredRooms.length === 0 ? (
             <View style={styles.empty}>
-              <Text style={styles.emptyEmoji}>🎮</Text>
+              <PulsingEmptyIllustration />
               <Text style={styles.emptyTitle}>No active rooms</Text>
               <ThemedText type="caption" style={styles.emptySub}>
-                Start a room and share the code so others can join.
+                Start a room and invite friends to join.
               </ThemedText>
               <Pressable
                 onPress={() => router.push('/(tabs)/play/create-room')}
-                style={({ pressed }) => [styles.emptyCta, pressed && styles.pressed]}
+                style={({ pressed }) => [styles.emptyCtaPress, pressed && styles.pressed]}
               >
-                <Text style={styles.emptyCtaText}>Create the first room!</Text>
+                <LinearGradient
+                  colors={[...dsColors.primaryGradient]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.emptyCtaGrad}
+                >
+                  <Text style={styles.emptyCtaText}>Create Room</Text>
+                </LinearGradient>
               </Pressable>
             </View>
           ) : (
@@ -172,10 +206,17 @@ export default function RoomsScreen() {
         <View style={styles.footer}>
           <Pressable
             onPress={() => router.push('/(tabs)/play/create-room')}
-            style={({ pressed }) => [styles.createFull, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.createFullPress, pressed && styles.pressed]}
           >
-            <MaterialIcons name="add" size={22} color="#fff" />
-            <Text style={styles.createFullText}>Create Room</Text>
+            <LinearGradient
+              colors={[...dsColors.primaryGradient]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.createFullGrad}
+            >
+              <MaterialIcons name="add" size={22} color="#fff" />
+              <Text style={styles.createFullText}>Create Room</Text>
+            </LinearGradient>
           </Pressable>
         </View>
       </Animated.View>
@@ -292,24 +333,42 @@ const styles = StyleSheet.create({
   codeValue: { color: AppColors.text, fontSize: 14, fontWeight: '800', letterSpacing: 1 },
   empty: {
     alignItems: 'center',
-    paddingVertical: Spacing.lg + Spacing.md,
+    paddingVertical: Spacing.lg + Spacing.sm,
     paddingHorizontal: Spacing.lg,
     gap: Spacing.sm,
+    width: '100%',
   },
-  emptyEmoji: { fontSize: 56, marginBottom: Spacing.xs },
+  emptyIllustrationWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.sm,
+  },
   emptyTitle: {
     color: AppColors.text,
     fontSize: 20,
     fontWeight: '800',
     textAlign: 'center',
   },
-  emptySub: { color: AppColors.muted, textAlign: 'center', lineHeight: 20 },
-  emptyCta: {
-    marginTop: Spacing.md,
-    backgroundColor: ACCENT,
-    paddingVertical: 14,
+  emptySub: {
+    color: AppColors.muted,
+    textAlign: 'center',
+    lineHeight: 22,
+    paddingHorizontal: Spacing.sm,
+    marginTop: 2,
+  },
+  emptyCtaPress: {
+    marginTop: Spacing.lg,
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  emptyCtaGrad: {
+    height: 52,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 24,
-    borderRadius: 14,
   },
   emptyCtaText: { color: '#fff', fontWeight: '800', fontSize: 16 },
   footer: {
@@ -320,15 +379,19 @@ const styles = StyleSheet.create({
     borderTopColor: AppColors.cardBorder,
     backgroundColor: BG,
   },
-  createFull: {
+  createFullPress: {
+    width: '100%',
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  createFullGrad: {
+    height: 52,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: ACCENT,
-    paddingVertical: 16,
-    borderRadius: 14,
-    width: '100%',
+    borderRadius: 18,
+    paddingHorizontal: 20,
   },
   createFullText: { color: '#fff', fontWeight: '800', fontSize: 17 },
   pressed: { opacity: 0.9 },

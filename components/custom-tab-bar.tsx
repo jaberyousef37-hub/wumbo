@@ -6,7 +6,6 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppColors } from '@/constants/theme';
-import { ICON_TAB_ACTIVE, ICON_TAB_INACTIVE } from '@/constants/typography';
 
 const TAB_PILL_BG = 'rgba(124, 58, 237, 0.2)';
 const INACTIVE_LABEL = 'rgba(160, 160, 160, 0.4)';
@@ -62,7 +61,8 @@ export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarPro
               ? cfg.active
               : cfg.inactive
             : ('circle' as TabGlyph);
-          const iconSize = isFocused ? ICON_TAB_ACTIVE : ICON_TAB_INACTIVE;
+          // Single size avoids icon “pop” / layout shift when focus updates (e.g. nested stack pushes).
+          const iconSize = 24;
           const iconColor = isFocused ? AppColors.text : INACTIVE_ICON;
 
           return (

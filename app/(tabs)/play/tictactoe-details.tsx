@@ -10,11 +10,9 @@ import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/contexts/theme-context';
 import { Colors } from '@/constants/theme';
 import { Spacing } from '@/constants/spacing';
-import {
-  supabase,
-  supabaseAnonKey,
-  supabaseUrl,
-} from '@/lib/supabase';
+import { insertRoomRow } from '@/lib/supabase-rooms';
+import { supabase, supabaseAnonKey, supabaseUrl } from '@/lib/supabase';
+import { generateGuestName } from '@/lib/room-utils';
 
 const EMPTY_BOARD = [null, null, null, null, null, null, null, null, null];
 
@@ -67,24 +65,21 @@ export default function TicTacToeDetailsScreen() {
         return;
       }
 
-      // --- Proceed with insert ---
+      // --- Proceed with insert (shared helper: logging, host_id, schema-aligned) ---
       const code = String(generateRoomCode());
-      const players: string[] = ['X'];
-      const board: (null)[] = [...EMPTY_BOARD];
-      const turn = 'X';
-      const winner = null;
+      const hostName = generateGuestName();
 
-      const insertPayload = { code, players, board, turn, winner };
-      console.log('[CreateRoom] Before insert:', JSON.stringify(insertPayload));
-
-      const { data, error } = await supabase
-        .from('rooms')
-        .insert(insertPayload)
-        .select('id')
-        .single();
+      const { data, error } = await insertRoomRow({
+        code,
+        game_type: 'tictactoe',
+        host_name: hostName,
+        players: ['X'],
+        board: [...EMPTY_BOARD],
+        turn: 'X',
+        winner: null,
+      });
 
       if (error) {
-        console.log('[CreateRoom] Supabase error:', error);
         throw error;
       }
       if (!data?.id) {

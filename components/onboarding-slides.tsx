@@ -1,7 +1,7 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Dimensions,
   FlatList,
@@ -10,6 +10,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useOnboarding } from '@/contexts/onboarding-context';
@@ -33,17 +34,40 @@ type Slide = { id: string };
 
 const SLIDE_META: Slide[] = [{ id: '1' }, { id: '2' }, { id: '3' }];
 
+const ICON_FLOAT_MS = 1200;
+const FADE_DURATION = 520;
+
+/** Gentle vertical float for hero + grid icons */
+function FloatingIcon({ children }: { children: ReactNode }) {
+  const y = useSharedValue(0);
+  useEffect(() => {
+    y.value = withRepeat(withTiming(-6, { duration: ICON_FLOAT_MS }), -1, true);
+  }, [y]);
+  const motion = useAnimatedStyle(() => ({
+    transform: [{ translateY: y.value }],
+  }));
+  return <Animated.View style={motion}>{children}</Animated.View>;
+}
+
 function SlideVisual({ index }: { index: number }) {
   if (index === 0) {
     return (
       <View style={styles.visualBlock}>
-        <Text style={styles.heroEmoji}>🎮</Text>
-        <Text style={styles.slideTitle}>Play 9 Games</Text>
-        <Text style={styles.slideSub}>Card classics, boards, party modes — all in one app.</Text>
+        <FloatingIcon>
+          <Text style={styles.heroEmoji}>🎮</Text>
+        </FloatingIcon>
+        <Animated.View entering={FadeIn.duration(FADE_DURATION).delay(100)} style={styles.fadeWrap}>
+          <Text style={styles.slideTitle}>Play 9 Games</Text>
+        </Animated.View>
+        <Animated.View entering={FadeIn.duration(FADE_DURATION).delay(200)} style={styles.fadeWrap}>
+          <Text style={styles.slideSub}>Card classics, boards, party modes — all in one app.</Text>
+        </Animated.View>
         <View style={styles.iconGrid}>
           {NINE_GAME_ICONS.map((g, i) => (
             <View key={i} style={styles.iconCell}>
-              <MaterialIcons name={g.icon} size={26} color="#E9D5FF" />
+              <FloatingIcon>
+                <MaterialIcons name={g.icon} size={26} color="#E9D5FF" />
+              </FloatingIcon>
             </View>
           ))}
         </View>
@@ -53,9 +77,15 @@ function SlideVisual({ index }: { index: number }) {
   if (index === 1) {
     return (
       <View style={styles.visualBlock}>
-        <Text style={styles.heroEmoji}>💬</Text>
-        <Text style={styles.slideTitle}>Chat & Challenge</Text>
-        <Text style={styles.slideSub}>Drop invites with room codes — tap to jump in.</Text>
+        <FloatingIcon>
+          <Text style={styles.heroEmoji}>💬</Text>
+        </FloatingIcon>
+        <Animated.View entering={FadeIn.duration(FADE_DURATION).delay(100)} style={styles.fadeWrap}>
+          <Text style={styles.slideTitle}>Chat & Challenge</Text>
+        </Animated.View>
+        <Animated.View entering={FadeIn.duration(FADE_DURATION).delay(200)} style={styles.fadeWrap}>
+          <Text style={styles.slideSub}>Drop invites with room codes — tap to jump in.</Text>
+        </Animated.View>
         <View style={styles.chatMock}>
           <View style={styles.bubbleLeft}>
             <Text style={styles.bubbleLeftText}>Trivia rematch? 🎯</Text>
@@ -79,9 +109,15 @@ function SlideVisual({ index }: { index: number }) {
   }
   return (
     <View style={styles.visualBlock}>
-      <Text style={styles.heroEmoji}>🏆</Text>
-      <Text style={styles.slideTitle}>Earn & Compete</Text>
-      <Text style={styles.slideSub}>Stack XP, collect coins, climb the board.</Text>
+      <FloatingIcon>
+        <Text style={styles.heroEmoji}>🏆</Text>
+      </FloatingIcon>
+      <Animated.View entering={FadeIn.duration(FADE_DURATION).delay(100)} style={styles.fadeWrap}>
+        <Text style={styles.slideTitle}>Earn & Compete</Text>
+      </Animated.View>
+      <Animated.View entering={FadeIn.duration(FADE_DURATION).delay(200)} style={styles.fadeWrap}>
+        <Text style={styles.slideSub}>Stack XP, collect coins, climb the board.</Text>
+      </Animated.View>
       <View style={styles.leaderCard}>
         <Text style={styles.leaderHead}>Leaderboard</Text>
         {[
@@ -148,16 +184,18 @@ export default function OnboardingSlides() {
           <View style={styles.slideBody}>
             <SlideVisual index={index} />
           </View>
-          <Pressable onPress={handleNext} style={styles.nextBtn}>
-            <LinearGradient
-              colors={[AppColors.tint, '#A78BFA']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.nextGradient}
-            >
-              <Text style={styles.nextText}>{index === SLIDE_META.length - 1 ? 'Get Started' : 'Next'}</Text>
-            </LinearGradient>
-          </Pressable>
+          <Animated.View entering={FadeIn.duration(FADE_DURATION).delay(280)} style={styles.nextBtnWrap}>
+            <Pressable onPress={handleNext} style={styles.nextBtn}>
+              <LinearGradient
+                colors={[AppColors.tint, '#A78BFA']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.nextGradient}
+              >
+                <Text style={styles.nextText}>{index === SLIDE_META.length - 1 ? 'Get Started' : 'Next'}</Text>
+              </LinearGradient>
+            </Pressable>
+          </Animated.View>
         </SafeAreaView>
       </View>
     ),
@@ -205,6 +243,12 @@ const styles = StyleSheet.create({
   skipText: { color: 'rgba(255,255,255,0.7)', fontSize: 16, fontWeight: '600' },
   slideBody: { flex: 1, justifyContent: 'center', paddingHorizontal: 28 },
   visualBlock: { alignItems: 'center' },
+  fadeWrap: { width: '100%', alignItems: 'center' },
+  nextBtnWrap: {
+    marginHorizontal: 28,
+    marginBottom: 28,
+    alignSelf: 'stretch',
+  },
   heroEmoji: { fontSize: 56, marginBottom: 16 },
   slideTitle: {
     color: '#fff',
@@ -290,8 +334,6 @@ const styles = StyleSheet.create({
   coinEmoji: { fontSize: 22 },
   coinsLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 13, flex: 1, lineHeight: 18 },
   nextBtn: {
-    marginHorizontal: 28,
-    marginBottom: 28,
     borderRadius: 16,
     overflow: 'hidden',
   },

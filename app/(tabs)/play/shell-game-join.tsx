@@ -1,16 +1,18 @@
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useState, useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { HeaderBar } from '@/components/design-system';
 import { InGameChat } from '@/components/in-game-chat';
 import { PrimaryButton } from '@/components/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { generateGuestName } from '@/lib/room-utils';
 import { supabase } from '@/lib/supabase';
 import { Spacing } from '@/constants/spacing';
+
+const JOIN_PAD = 24;
 
 const BG_DEEP = '#0d2818';
 const BG_CENTER = '#1a4030';
@@ -121,14 +123,12 @@ export default function ShellGameJoinScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.header}>
-            <Pressable onPress={handleBack} style={styles.backBtn} hitSlop={12}>
-              <MaterialIcons name="arrow-back" size={24} color="#fff" />
-            </Pressable>
-            <ThemedText type="defaultSemiBold" style={[styles.title, styles.titleFlex]} darkColor="#fff">
-              Join Shell Game
-            </ThemedText>
-            <InGameChat selfName="You" opponentName="Host" opponentIsAi={false} />
+          <View style={{ marginHorizontal: -JOIN_PAD }}>
+            <HeaderBar
+              title="Join Shell Game"
+              onBack={handleBack}
+              right={<InGameChat selfName="You" opponentName="Host" opponentIsAi={false} />}
+            />
           </View>
 
           <ThemedText
@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   container: {
     flex: 1,
-    paddingHorizontal: 24,
+    paddingHorizontal: JOIN_PAD,
     paddingTop: 16,
     justifyContent: 'space-between',
   },
@@ -200,16 +200,9 @@ const styles = StyleSheet.create({
   footer: {
     paddingTop: 8,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  backBtn: { marginRight: 12 },
-  title: { fontSize: 20 },
-  titleFlex: { flex: 1, textAlign: 'center' },
   instruction: {
     fontSize: 16,
+    marginTop: 16,
     marginBottom: 24,
     textAlign: 'center',
   },

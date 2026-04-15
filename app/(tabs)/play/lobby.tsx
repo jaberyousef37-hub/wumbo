@@ -1,7 +1,7 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import type { Href } from 'expo-router';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -23,6 +23,14 @@ type Room = {
   status?: string;
 };
 
+/** Online: games where the host can start alone (vs AI / solo). Head-to-head games need 2 humans. */
+function getMinPlayersToStart(isLocalRoom: boolean, gt: string | undefined): number {
+  if (isLocalRoom) return 1;
+  const g = gt ?? 'tictactoe';
+  if (g === 'uno' || g === 'trivia' || g === 'snake' || g === 'shell' || g === 'bs') return 1;
+  return 2;
+}
+
 export default function LobbyScreen() {
   const router = useRouter();
   const { roomId, roomCode, gameType, myName, isHost, challengeFriend } = useLocalSearchParams<{
@@ -33,13 +41,14 @@ export default function LobbyScreen() {
     isHost?: string;
     challengeFriend?: string;
   }>();
+  const gameTypeParam = Array.isArray(gameType) ? gameType[0] : gameType;
   const { isDark } = useTheme();
   const palette = isDark ? Colors.dark : Colors.light;
 
   const [room, setRoom] = useState<Room | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const gameName = GAME_NAMES[gameType ?? 'tictactoe'] ?? gameType ?? 'Game';
+  const gameName = GAME_NAMES[gameTypeParam ?? 'tictactoe'] ?? gameTypeParam ?? 'Game';
   const amHost = isHost === '1';
 
   useEffect(() => {
@@ -108,32 +117,48 @@ export default function LobbyScreen() {
 
   const players = room?.players ?? [];
   const isLocal = roomId === 'local';
-  const canStart = isLocal ? players.length >= 1 : players.length >= 2;
-  const waitingForPlayers = players.length < 2;
+
+  const minPlayersRequired = useMemo(
+    () => getMinPlayersToStart(isLocal, gameTypeParam),
+    [isLocal, gameTypeParam]
+  );
+  const canStartGame = players.length >= minPlayersRequired;
+  const waitingForPlayers = players.length < minPlayersRequired;
+
+  useEffect(() => {
+    if (!room) return;
+    console.log('Start game conditions:', {
+      isHost: amHost,
+      playersCount: players.length,
+      minPlayersRequired,
+      roomStatus: room.status,
+      canStartGame,
+    });
+  }, [room, amHost, players.length, minPlayersRequired, canStartGame]);
 
   const handleStartGame = () => {
-    if (!roomId || !gameType) return;
+    if (!roomId || !gameTypeParam || !canStartGame) return;
 
     if (!isLocal) {
       supabase.from('rooms').update({ status: 'playing' }).eq('id', roomId).then(() => {});
     }
 
-    if (gameType === 'tictactoe') {
+    if (gameTypeParam === 'tictactoe') {
       router.replace({
         pathname: '/(tabs)/play/tictactoe',
         params: { roomId, mySymbol: amHost ? 'X' : 'O' },
       } as unknown as Href);
-    } else if (gameType === 'chess') {
+    } else if (gameTypeParam === 'chess') {
       router.replace('/(tabs)/play/chess' as Href);
-    } else if (gameType === 'uno') {
+    } else if (gameTypeParam === 'uno') {
       router.replace('/(tabs)/play/uno' as Href);
-    } else if (gameType === 'trivia') {
+    } else if (gameTypeParam === 'trivia') {
       router.replace('/(tabs)/play/trivia' as Href);
-    } else if (gameType === 'bs') {
+    } else if (gameTypeParam === 'bs') {
       router.replace('/(tabs)/play/bs' as Href);
-    } else if (gameType === 'shell') {
+    } else if (gameTypeParam === 'shell') {
       router.replace('/(tabs)/play/shell-game' as Href);
-    } else if (gameType === 'snake') {
+    } else if (gameTypeParam === 'snake') {
       router.replace('/(tabs)/play/snake' as Href);
     } else {
       router.replace('/(tabs)/play/tictactoe' as Href);
@@ -252,12 +277,24 @@ export default function LobbyScreen() {
         </View>
 
         {amHost && (
-          <PrimaryButton
-            label="Start Game"
-            onPress={handleStartGame}
-            disabled={!canStart}
-            style={styles.startButton}
-          />
+          <>
+            <PrimaryButton
+              label="Start Game"
+              onPress={handleStartGame}
+              disabled={!canStartGame}
+              style={styles.startButton}
+            />
+            {!canStartGame && minPlayersRequired === 2 ? (
+              <ThemedText
+                style={styles.startBlockedHint}
+                lightColor={Colors.light.icon}
+                darkColor={Colors.dark.icon}
+              >
+                Two players are required. Share the room code so a friend can join, then start when
+                they appear above.
+              </ThemedText>
+            ) : null}
+          </>
         )}
       </View>
     </SafeAreaView>
@@ -283,17 +320,25 @@ const styles = StyleSheet.create({
   title: { fontSize: 20 },
   codeCard: {
     alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
     padding: Spacing.lg,
+    paddingVertical: Spacing.lg + 4,
     borderRadius: 16,
     borderWidth: 1,
     marginBottom: Spacing.md,
+    overflow: 'visible',
   },
   codeLabel: { fontSize: 14, marginBottom: Spacing.xs },
   roomCode: {
-    fontSize: 40,
+    fontSize: 48,
     fontWeight: '800',
+    lineHeight: 56,
+    textAlign: 'center',
     letterSpacing: 8,
     marginBottom: Spacing.xs,
+    alignSelf: 'center',
+    width: '100%',
   },
   codeHint: { fontSize: 13 },
   gameName: {
@@ -337,5 +382,12 @@ const styles = StyleSheet.create({
   startButton: {
     minHeight: 56,
     paddingVertical: Spacing.sm,
+  },
+  startBlockedHint: {
+    marginTop: Spacing.sm,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    paddingHorizontal: Spacing.sm,
   },
 });

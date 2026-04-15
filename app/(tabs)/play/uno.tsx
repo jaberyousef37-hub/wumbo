@@ -24,6 +24,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { HeaderBar } from '@/components/design-system';
 import { InGameChat } from '@/components/in-game-chat';
 import { HowToPlayButton } from '@/components/how-to-play-button';
 import { useCosmetics } from '@/contexts/cosmetics-context';
@@ -52,6 +53,10 @@ import {
   type UnoSeat,
   type UnoSuit,
 } from '@/lib/uno';
+
+/** Global dark shell; felt green only on board + active-color strip */
+const SCREEN_BG = '#0B0B0F';
+const BOARD_CARD_BG = '#15151A';
 
 const SUIT_HEX: Record<UnoSuit, string> = {
   red: '#E53935',
@@ -492,23 +497,18 @@ export default function UnoScreen() {
   const drawDisabled = game.drawStack === 0 && playable.length > 0;
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: skin.felt }]} edges={['bottom', 'left', 'right']}>
-      <View style={[styles.felt, { backgroundColor: skin.felt, paddingTop: insets.top }]}>
-        <LinearGradient
-          colors={[AppColors.tint, AppColors.accent, AppColors.yellow]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.header}
-        >
-          <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
-            <MaterialIcons name="arrow-back" size={24} color="#fff" />
-          </Pressable>
-          <ThemedText type="defaultSemiBold" style={styles.headerTitle} darkColor="#fff">
-            UNO
-          </ThemedText>
-          <InGameChat selfName="You" opponentName="Opponents" opponentIsAi />
-          <HowToPlayButton gameId="uno" tint="#fff" />
-        </LinearGradient>
+    <SafeAreaView style={[styles.safe, { backgroundColor: SCREEN_BG }]} edges={['bottom', 'left', 'right']}>
+      <View style={[styles.screenInner, { paddingTop: insets.top }]}>
+        <HeaderBar
+          title="UNO"
+          onBack={() => router.back()}
+          right={
+            <>
+              <InGameChat selfName="You" opponentName="Opponents" opponentIsAi />
+              <HowToPlayButton gameId="uno" tint="#FFFFFF" />
+            </>
+          }
+        />
 
         <View style={styles.diffRow}>
           {(['easy', 'medium', 'hard'] as const).map((d) => (
@@ -539,7 +539,12 @@ export default function UnoScreen() {
           ))}
         </View>
 
-        <View style={styles.activeColorBanner}>
+        <View
+          style={[
+            styles.activeColorBanner,
+            { backgroundColor: skin.felt, borderColor: 'rgba(255,255,255,0.12)' },
+          ]}
+        >
           <Text style={styles.activeColorLabel}>Active color</Text>
           <View
             style={[
@@ -595,7 +600,8 @@ export default function UnoScreen() {
           </Animated.View>
         )}
 
-        <View style={[styles.table, { backgroundColor: skin.feltRim }]}>
+        <View style={styles.boardCard}>
+          <View style={[styles.table, { backgroundColor: skin.feltRim }]}>
           {game.numPlayers === 3 ? (
             <OpponentZone
               name={UNO_NAMES[2]}
@@ -723,6 +729,7 @@ export default function UnoScreen() {
               </Pressable>
             )}
           </Animated.View>
+          </View>
         </View>
       </View>
 
@@ -780,23 +787,22 @@ export default function UnoScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-  felt: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 8,
+  screenInner: { flex: 1, backgroundColor: SCREEN_BG },
+  boardCard: {
+    flex: 1,
+    minHeight: 0,
     marginHorizontal: Spacing.md,
-    marginTop: Spacing.sm,
-    borderRadius: 16,
+    marginTop: 16,
+    marginBottom: 16,
+    backgroundColor: BOARD_CARD_BG,
+    padding: 16,
+    borderRadius: 20,
   },
-  backBtn: { padding: 4 },
-  headerTitle: { flex: 1, textAlign: 'center', fontSize: 20 },
   diffRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 8,
-    marginTop: 10,
+    marginTop: 16,
     paddingHorizontal: Spacing.md,
   },
   diffChip: {
@@ -818,19 +824,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    marginTop: 8,
+    marginTop: 14,
     paddingHorizontal: Spacing.md,
   },
   playersRowLabel: { color: 'rgba(255,255,255,0.75)', fontWeight: '700', fontSize: 12, marginRight: 4 },
   activeColorBanner: {
     marginHorizontal: Spacing.md,
-    marginTop: 10,
-    paddingVertical: 12,
+    marginTop: 18,
+    paddingVertical: 14,
     paddingHorizontal: 14,
     borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.38)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
     gap: 8,
   },
@@ -856,13 +860,15 @@ const styles = StyleSheet.create({
   oppSpacer: { height: 8 },
   stackBanner: {
     marginHorizontal: Spacing.md,
-    marginTop: 8,
-    padding: 10,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    marginTop: 14,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: BOARD_CARD_BG,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
   },
   stackBannerText: { color: '#FDE68A', fontWeight: '800', fontSize: 13, textAlign: 'center' },
-  turnRow: { alignItems: 'center', marginTop: Spacing.sm, marginBottom: Spacing.xs },
+  turnRow: { alignItems: 'center', marginTop: 14, marginBottom: 10 },
   turnPill: {
     paddingHorizontal: 20,
     paddingVertical: 8,
@@ -871,18 +877,17 @@ const styles = StyleSheet.create({
   turnPillText: { color: '#fff', fontWeight: '800', fontSize: 14 },
   turnFlash: {
     alignSelf: 'center',
-    marginBottom: 6,
+    marginBottom: 10,
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   turnFlashText: { color: '#fff', fontWeight: '900', fontSize: 14 },
   table: {
     flex: 1,
-    marginHorizontal: 10,
-    marginBottom: 12,
-    borderRadius: 28,
+    minHeight: 0,
+    borderRadius: 16,
     borderWidth: 2,
     borderColor: 'rgba(0,0,0,0.25)',
     paddingTop: 10,

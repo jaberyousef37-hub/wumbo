@@ -14,6 +14,7 @@ import {
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { HeaderBar } from '@/components/design-system';
 import { ThemedText } from '@/components/themed-text';
 import { AppColors } from '@/constants/theme';
 import { CARD_GAP, CARD_PADDING, SECTION_GAP, Spacing } from '@/constants/spacing';
@@ -239,14 +240,10 @@ export default function PlayScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Animated.View entering={FadeIn.duration(380)} style={styles.container}>
-        <View style={styles.header}>
-          <ThemedText type="title" style={styles.headerTitle}>
-            Play
-          </ThemedText>
-          <ThemedText type="caption" style={styles.headerSub}>
-            Solo practice or host a room — your call.
-          </ThemedText>
-        </View>
+        <HeaderBar title="Play" />
+        <ThemedText type="caption" style={styles.headerSub}>
+          Solo practice or host a room — your call.
+        </ThemedText>
 
         <View style={styles.searchWrap}>
           <MaterialIcons name="search" size={22} color={AppColors.muted} style={styles.searchIcon} />
@@ -295,14 +292,11 @@ export default function PlayScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: BG },
   container: { flex: 1 },
-  header: {
+  headerSub: {
+    color: AppColors.muted,
     paddingHorizontal: Spacing.sm,
-    paddingTop: Spacing.xs,
-    paddingBottom: Spacing.sm,
-    gap: 4,
+    marginBottom: Spacing.sm,
   },
-  headerTitle: { fontWeight: '800', color: AppColors.text },
-  headerSub: { color: AppColors.muted },
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',

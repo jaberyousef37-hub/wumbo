@@ -7,6 +7,7 @@ import Animated, {
   type SharedValue,
   useAnimatedStyle,
   useSharedValue,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -42,6 +43,62 @@ const CATEGORY_COLORS: Record<WyrCategory, string> = {
   Superpowers: '#60A5FA',
   Life: '#A78BFA',
 };
+
+const SPLIT_GAP = 8;
+const SPLIT_BORDER = 'rgba(255,255,255,0.08)';
+
+function SplitChoice({
+  side,
+  label,
+  optionText,
+  bg,
+  picked,
+  onPick,
+}: {
+  side: 'a' | 'b';
+  label: string;
+  optionText: string;
+  bg: string;
+  picked: 'a' | 'b' | null;
+  onPick: (s: 'a' | 'b') => void;
+}) {
+  const scale = useSharedValue(1);
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePressIn = () => {
+    if (picked) return;
+    scale.value = withTiming(0.97, { duration: 100 });
+  };
+  const handlePressOut = () => {
+    scale.value = withSpring(1, { damping: 17, stiffness: 380 });
+  };
+
+  const isChosen = picked === side;
+
+  return (
+    <Pressable
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      onPress={() => onPick(side)}
+      disabled={!!picked}
+      style={styles.halfPressable}
+    >
+      <Animated.View
+        style={[
+          styles.half,
+          { backgroundColor: bg, borderColor: SPLIT_BORDER },
+          animStyle,
+        ]}
+      >
+        <Text style={styles.orLabel}>{label}</Text>
+        <Text style={styles.optionText}>{optionText}</Text>
+        {isChosen ? <View pointerEvents="none" style={styles.chosenRing} /> : null}
+      </Animated.View>
+    </Pressable>
+  );
+}
 
 function StatBar({
   label,
@@ -185,35 +242,22 @@ export default function WouldYouRatherScreen() {
       </View>
 
       <View style={styles.split}>
-        <Pressable
-          onPress={() => onPick('a')}
-          disabled={!!picked}
-          style={({ pressed }) => [
-            styles.half,
-            styles.halfLeft,
-            { backgroundColor: LEFT_SOLID },
-            pressed && !picked && { opacity: 0.92 },
-          ]}
-        >
-          <Text style={styles.orLabel}>Would you rather…</Text>
-          <Text style={styles.optionText}>{q.a}</Text>
-          {picked === 'a' && <View pointerEvents="none" style={styles.chosenRing} />}
-        </Pressable>
-        <View style={styles.divider} />
-        <Pressable
-          onPress={() => onPick('b')}
-          disabled={!!picked}
-          style={({ pressed }) => [
-            styles.half,
-            styles.halfRight,
-            { backgroundColor: RIGHT_SOLID },
-            pressed && !picked && { opacity: 0.92 },
-          ]}
-        >
-          <Text style={styles.orLabel}>…or…</Text>
-          <Text style={styles.optionText}>{q.b}</Text>
-          {picked === 'b' && <View pointerEvents="none" style={styles.chosenRing} />}
-        </Pressable>
+        <SplitChoice
+          side="a"
+          label="Would you rather…"
+          optionText={q.a}
+          bg={LEFT_SOLID}
+          picked={picked}
+          onPick={onPick}
+        />
+        <SplitChoice
+          side="b"
+          label="…or…"
+          optionText={q.b}
+          bg={RIGHT_SOLID}
+          picked={picked}
+          onPick={onPick}
+        />
       </View>
 
       <View style={styles.bottomPanel}>
@@ -321,11 +365,26 @@ const styles = StyleSheet.create({
   },
   catText: { fontWeight: '800', fontSize: 12, letterSpacing: 0.3 },
   turnMeta: { color: '#DDD6FE', fontWeight: '700', fontSize: 14, flex: 1, textAlign: 'right' },
-  split: { flex: 1, flexDirection: 'row', minHeight: 280 },
-  half: { flex: 1, justifyContent: 'center', padding: Spacing.md, position: 'relative', overflow: 'hidden' },
-  halfLeft: {},
-  halfRight: {},
-  divider: { width: 3, backgroundColor: 'rgba(0,0,0,0.35)' },
+  split: {
+    flex: 1,
+    flexDirection: 'row',
+    minHeight: 280,
+    gap: SPLIT_GAP,
+    paddingHorizontal: 4,
+  },
+  halfPressable: {
+    flex: 1,
+    minWidth: 0,
+  },
+  half: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: Spacing.md,
+    position: 'relative',
+    overflow: 'hidden',
+    borderRadius: 18,
+    borderWidth: 2,
+  },
   orLabel: {
     color: 'rgba(255,255,255,0.85)',
     fontSize: 13,

@@ -9,7 +9,7 @@ import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/contexts/theme-context';
 import { Colors } from '@/constants/theme';
 import { Spacing } from '@/constants/spacing';
-import { supabase } from '@/lib/supabase';
+import { insertRoomRow } from '@/lib/supabase-rooms';
 import { generateRoomCode, generateGuestName } from '@/lib/room-utils';
 
 const GAMES = [
@@ -38,20 +38,12 @@ export default function CreateRoomScreen() {
     const players: string[] = [hostName];
 
     try {
-      const { data, error } = await supabase
-        .from('rooms')
-        .insert({
-          code,
-          game_type: gameType,
-          host_name: hostName,
-          players,
-          status: 'waiting',
-          board: [null, null, null, null, null, null, null, null, null],
-          turn: 'X',
-          winner: null,
-        })
-        .select('id')
-        .single();
+      const { data, error } = await insertRoomRow({
+        code,
+        game_type: gameType,
+        host_name: hostName,
+        players,
+      });
 
       if (error) throw error;
       if (!data?.id) throw new Error('No room id returned');
