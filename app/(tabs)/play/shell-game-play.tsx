@@ -3,12 +3,20 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import { Dimensions, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Reanimated, {
   cancelAnimation,
   Easing,
-  Extrapolation,
   interpolate,
   runOnJS,
   useAnimatedStyle,
@@ -33,11 +41,14 @@ import { Typography } from '@/constants/typography';
 import { playClick } from '@/lib/sounds';
 import { supabase } from '@/lib/supabase';
 
+/** Animated lid translate (MEMORIZE + result lifts) — only the lid moves; bodies share one baseline. */
+const ShellCupWatchLidLiftStyleContext = createContext<unknown>(null);
+
 const BG_DEEP = '#0a1620';
-const FELT_GREEN = '#0d3d2a';
-const FELT_DEEP = '#062015';
-const WOOD_DARK = '#2c1810';
-const WOOD_EDGE = '#4a2c1a';
+/** Shell game card (felt pad) fill + border */
+const SHELL_CARD_GRADIENT_TOP = '#1a0a2e';
+const SHELL_CARD_GRADIENT_BOTTOM = '#0d0d0d';
+const SHELL_CARD_BORDER = 'rgba(124, 58, 237, 0.4)';
 const GOLD = '#D4AF37';
 const GOLD_MID = '#B8860B';
 const GOLD_DARK = '#7a5c0c';
@@ -69,22 +80,41 @@ function swapMsForStep(step: number, totalSteps: number, roundIndex: number): nu
   return Math.max(95, Math.round(base / shuffleSpeedFactor(roundIndex)));
 }
 
-// Premium cups: larger base art; scale to fit track (felt + padding).
-const _SCREEN_W = Dimensions.get('window').width;
-const _CUP_BASE = 178;
-const _GAP_BASE = 18;
-const CUP_SCALE_BOOST = 1.2;
-const _CUP_FIT = (_SCREEN_W - 52) / (3 * _CUP_BASE + 2 * _GAP_BASE);
-const _CUP_SCALE = Math.min(1.08 * CUP_SCALE_BOOST, _CUP_FIT * CUP_SCALE_BOOST);
-const CUP_SIZE = Math.round(_CUP_BASE * _CUP_SCALE);
-const CUP_SPACING = Math.round(_GAP_BASE * _CUP_SCALE);
-const CUP_BODY_W = Math.round(108 * _CUP_SCALE);
-const CUP_BODY_H = Math.round(138 * _CUP_SCALE);
-const RIM_W = Math.round(136 * _CUP_SCALE);
-const RIM_H = Math.round(26 * _CUP_SCALE);
-const BASE_W = Math.round(76 * _CUP_SCALE);
-const BASE_H = Math.round(16 * _CUP_SCALE);
-const BALL_SZ = Math.round(42 * _CUP_SCALE);
+/** Shell cup layout — lid + body (−4 overlap) + base (stacked, no gaps). */
+const CUP_LID_W = 100;
+const CUP_LID_H = 18;
+const CUP_BODY_W = 85;
+const CUP_BODY_H = 80;
+const CUP_BASE_W = 95;
+const CUP_BASE_H = 10;
+/** Body pulls up 4px under lid so parts meet with no visible gap. */
+const CUP_BODY_OVERLAP = 4;
+/** Lid + body (minus overlap) + base — actual layout height used to vertically center the cup group. */
+const CUP_TOTAL_H = CUP_LID_H + (CUP_BODY_H - CUP_BODY_OVERLAP) + CUP_BASE_H;
+/** Widest part — stride / hit targets. */
+const CUP_W = CUP_LID_W;
+const CUP_SIZE = CUP_LID_W;
+const CUP_SPACING = 18;
+const BALL_SZ = 32;
+const GLASS_PURPLE = '#7C3AED';
+const GLASS_PINK = '#FF6FD8';
+/** Slightly darker lid gradient endpoints. */
+const LID_PURPLE = 'rgba(88, 42, 168, 0.95)';
+const LID_PINK = 'rgba(188, 65, 158, 0.95)';
+
+/** Horizontal inset for the cup row (each side). */
+const ROW_H_PAD = 16;
+
+function computeCupRowMetrics(trackWidth: number) {
+  const inner = Math.max(0, trackWidth - ROW_H_PAD * 2);
+  const cupW = CUP_W;
+  const gap = inner > 0 ? Math.max(4, (inner - 3 * cupW) / 2) : CUP_SPACING;
+  const stride = cupW + gap;
+  if (!Number.isFinite(stride) || stride <= 0) {
+    return { inner, cupW: CUP_W, gap: 12, stride: CUP_W + 12 };
+  }
+  return { inner, cupW, gap, stride };
+}
 
 type GamePhase = 'hiding' | 'watching' | 'shuffling' | 'guessing' | 'result';
 
@@ -130,22 +160,13 @@ function pointsForCorrect(streakBefore: number): number {
 function GlowingBall({ style, pulse }: { style?: object; pulse?: boolean }) {
   return (
     <View style={[styles.ballGlowOuter, style]}>
-      <View style={styles.ballGlowRing} />
-      <View style={styles.ballWrap}>
+      <View style={styles.ballWhiteCircle}>
         <LinearGradient
-          colors={['#FFF5A0', '#FF6B35', '#FF2200', '#8B0000']}
-          style={styles.ballCircle}
-          start={{ x: 0.15, y: 0.12 }}
-          end={{ x: 0.92, y: 0.95 }}
+          colors={['rgba(124, 58, 237, 0.45)', 'rgba(255, 111, 216, 0.2)']}
+          style={styles.ballPurpleInnerGlow}
+          start={{ x: 0.3, y: 0.3 }}
+          end={{ x: 0.9, y: 0.9 }}
         />
-        <LinearGradient
-          colors={['rgba(255,255,255,0.95)', 'rgba(255,200,120,0.35)', 'transparent']}
-          style={styles.ballInnerSheen}
-          start={{ x: 0.2, y: 0.15 }}
-          end={{ x: 0.85, y: 0.75 }}
-        />
-        <View style={styles.ballHighlight} />
-        <View style={styles.ballRimLight} />
       </View>
       {pulse ? <View style={styles.ballPulse} pointerEvents="none" /> : null}
     </View>
@@ -155,57 +176,48 @@ function GlowingBall({ style, pulse }: { style?: object; pulse?: boolean }) {
 function PremiumCup({
   children,
   style,
+  ballAboveCupBody,
 }: {
   children?: ReactNode;
   style?: object;
+  ballAboveCupBody?: boolean;
 }) {
+  const watchLidLiftStyle = useContext(ShellCupWatchLidLiftStyleContext);
+  const bodyFill = ['rgba(124, 58, 237, 0.9)', 'rgba(255, 111, 216, 0.9)'] as const;
   return (
     <View style={[styles.cupColumn, style]}>
-      <View style={styles.cupRimWrap}>
-        <View style={styles.cupRimShadow} />
+      <View style={styles.shellCupStack}>
+        <Reanimated.View style={[styles.shellLid, watchLidLiftStyle as object]}>
+          <LinearGradient
+            colors={[LID_PURPLE, LID_PINK]}
+            style={StyleSheet.absoluteFill}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
+          <View style={styles.shellLidShine} pointerEvents="none" />
+        </Reanimated.View>
+        <View style={styles.shellBody}>
+          <LinearGradient
+            colors={bodyFill}
+            style={StyleSheet.absoluteFill}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
+          <View style={styles.shellBodyShine} pointerEvents="none" />
+          <View
+            style={[styles.shellInnerSlot, ballAboveCupBody ? styles.cupInnerSlotAboveBody : null]}
+            collapsable={false}
+          >
+            {children}
+          </View>
+        </View>
         <LinearGradient
-          colors={[GOLD_RIM, GOLD_HIGHLIGHT, GOLD, GOLD_MID]}
-          style={styles.cupRim}
-          start={{ x: 0.1, y: 0 }}
-          end={{ x: 0.95, y: 1 }}
-        />
-        <LinearGradient
-          colors={['rgba(255,255,255,0.65)', 'rgba(255,255,255,0)', 'rgba(0,0,0,0.2)']}
-          style={styles.cupRimSpecular}
-          start={{ x: 0.4, y: 0 }}
-          end={{ x: 0.7, y: 0.9 }}
+          colors={[GLASS_PURPLE, GLASS_PINK]}
+          style={styles.shellBase}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
         />
       </View>
-      <View style={styles.cupBodyShell}>
-        <LinearGradient
-          colors={[GOLD_HIGHLIGHT, GOLD, GOLD_MID, GOLD_DARK, '#3d2a06']}
-          style={styles.cupBody}
-          start={{ x: 0.05, y: 0 }}
-          end={{ x: 0.98, y: 1 }}
-        />
-        <LinearGradient
-          colors={['rgba(0,0,0,0.45)', 'transparent', 'transparent']}
-          style={styles.cupBodyLeftShade}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 0.45, y: 0.5 }}
-        />
-        <LinearGradient
-          colors={['rgba(255,255,255,0.7)', 'rgba(255,255,255,0.08)', 'rgba(0,0,0,0.25)']}
-          style={styles.cupBodySheen}
-          start={{ x: 0.32, y: 0 }}
-          end={{ x: 0.68, y: 1 }}
-        />
-        <View style={styles.cupHighlightStreak} />
-        <View style={styles.cupInnerRim} />
-      </View>
-      <LinearGradient
-        colors={[GOLD_DARK, '#2a1f08', '#140f04']}
-        style={styles.cupBase}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-      />
-      <View style={styles.cupBaseEdge} />
-      <View style={styles.cupInnerSlot}>{children}</View>
     </View>
   );
 }
@@ -273,13 +285,15 @@ type CupMotionProps = {
   cupX: SharedValue<number>[];
   cupShuffleY: SharedValue<number>[];
   cupWatchLift: SharedValue<number>[];
-  cupWatchRotate: SharedValue<number>[];
   cupWinLift: SharedValue<number>[];
-  cupWinRotate: SharedValue<number>[];
   wobbleX: SharedValue<number>[];
   guessScale: SharedValue<number>;
   shufflePulseScale: SharedValue<number>;
   pickGlow: SharedValue<number>;
+  /** Row layout width for this shell (matches track metrics). */
+  cupOuterWidth: number;
+  /** `containerHeight * 0.5 - cupHeight / 2` for vertical centering in the game area. */
+  cupTopPx: number;
   children: ReactNode;
   /** Rendered outside the glow wrapper (e.g. floating +points). */
   overlay?: ReactNode;
@@ -290,33 +304,34 @@ function CupMotionWrapper({
   cupX,
   cupShuffleY,
   cupWatchLift,
-  cupWatchRotate,
   cupWinLift,
-  cupWinRotate,
   wobbleX,
   guessScale,
   shufflePulseScale,
   pickGlow,
+  cupOuterWidth,
+  cupTopPx,
   children,
   overlay,
 }: CupMotionProps) {
+  const cupScale = cupOuterWidth / CUP_SIZE;
+
+  const watchLidLiftStyle = useAnimatedStyle(() => {
+    /** MEMORIZE lift capped at -40px; result lifts use `cupWinLift` only. */
+    const watchClamped = Math.max(cupWatchLift[cupId].value, -40);
+    return {
+      transform: [{ translateY: watchClamped + cupWinLift[cupId].value }],
+    };
+  });
+
   const motionStyle = useAnimatedStyle(() => {
     const tx = cupX[cupId].value + wobbleX[cupId].value;
-    const ty =
-      cupShuffleY[cupId].value + cupWatchLift[cupId].value + cupWinLift[cupId].value;
-    const shuffleLean = interpolate(
-      cupShuffleY[cupId].value,
-      [-32, 0],
-      [4.2, 0],
-      Extrapolation.CLAMP
-    );
-    const deg = cupWatchRotate[cupId].value + cupWinRotate[cupId].value + shuffleLean;
+    const ty = cupShuffleY[cupId].value;
     const sc = guessScale.value * shufflePulseScale.value;
     return {
       transform: [
         { translateX: tx },
         { translateY: ty },
-        { rotate: `${deg}deg` },
         { scale: sc },
       ],
     };
@@ -329,10 +344,36 @@ function CupMotionWrapper({
   }));
 
   return (
-    <Reanimated.View style={[styles.cupOuter, motionStyle]}>
-      <Reanimated.View style={[styles.cupGlowWrap, glowStyle]}>{children}</Reanimated.View>
-      {overlay}
-    </Reanimated.View>
+    <ShellCupWatchLidLiftStyleContext.Provider value={watchLidLiftStyle}>
+      <Reanimated.View
+        style={[
+          styles.cupOuter,
+          {
+            width: cupOuterWidth,
+            top: cupTopPx,
+          },
+          motionStyle,
+        ]}
+      >
+        <Reanimated.View style={[styles.cupGlowWrap, glowStyle]}>
+          <View
+            style={[styles.cupTableShadowWrap, { width: cupOuterWidth * 0.95 }]}
+            pointerEvents="none"
+          >
+            <View style={styles.cupTableShadow} />
+          </View>
+          <View
+            style={[
+              styles.cupArtScaleWrap,
+              { width: CUP_SIZE, transform: [{ scale: cupScale }] },
+            ]}
+          >
+            {children}
+          </View>
+        </Reanimated.View>
+        {overlay}
+      </Reanimated.View>
+    </ShellCupWatchLidLiftStyleContext.Provider>
   );
 }
 
@@ -416,12 +457,21 @@ export default function ShellGamePlayScreen() {
     myName?: string;
   }>();
 
-  const totalWidth = CUP_SIZE * 3 + CUP_SPACING * 2;
   const [trackLayoutW, setTrackLayoutW] = useState(
     () => Math.max(0, Dimensions.get('window').width - 32)
   );
-  const layoutRef = useRef({ baseX: 0 });
-  layoutRef.current.baseX = Math.max(0, (trackLayoutW - totalWidth) / 2);
+  const [cupsAreaHeight, setCupsAreaHeight] = useState(0);
+  const cupRowMetrics = useMemo(() => computeCupRowMetrics(trackLayoutW), [trackLayoutW]);
+  const cupTopPx = useMemo(() => {
+    if (cupsAreaHeight <= 0) return 0;
+    /** Scale matches `cupArtScaleWrap` — layout height ignores transform, so center using scaled shell height. */
+    const cupScale = cupRowMetrics.cupW / CUP_SIZE;
+    const totalCupHeightPx = CUP_TOTAL_H * cupScale;
+    return cupsAreaHeight / 2 - totalCupHeightPx / 2;
+  }, [cupsAreaHeight, cupRowMetrics.cupW]);
+  const layoutRef = useRef({ stride: CUP_SIZE + CUP_SPACING, cupW: CUP_SIZE });
+  layoutRef.current.stride = cupRowMetrics.stride;
+  layoutRef.current.cupW = cupRowMetrics.cupW;
 
   const [state, setState] = useState<ShellGameState>({
     ball_position: null,
@@ -431,7 +481,6 @@ export default function ShellGamePlayScreen() {
     guesser_choice: null,
   });
   const [shuffling, setShuffling] = useState(false);
-  const [canGuess, setCanGuess] = useState(false);
   const [localBallPick, setLocalBallPick] = useState<number | null>(null);
 
   const [score, setScore] = useState(0);
@@ -453,15 +502,9 @@ export default function ShellGamePlayScreen() {
   const cupWatchLift0 = useSharedValue(0);
   const cupWatchLift1 = useSharedValue(0);
   const cupWatchLift2 = useSharedValue(0);
-  const cupWatchRotate0 = useSharedValue(0);
-  const cupWatchRotate1 = useSharedValue(0);
-  const cupWatchRotate2 = useSharedValue(0);
   const cupWinLift0 = useSharedValue(0);
   const cupWinLift1 = useSharedValue(0);
   const cupWinLift2 = useSharedValue(0);
-  const cupWinRotate0 = useSharedValue(0);
-  const cupWinRotate1 = useSharedValue(0);
-  const cupWinRotate2 = useSharedValue(0);
   const wobbleX0 = useSharedValue(0);
   const wobbleX1 = useSharedValue(0);
   const wobbleX2 = useSharedValue(0);
@@ -484,23 +527,11 @@ export default function ShellGamePlayScreen() {
   }
   const cupWatchLift = cupWatchLiftRef.current;
 
-  const cupWatchRotateRef = useRef<SharedValue<number>[] | null>(null);
-  if (cupWatchRotateRef.current === null) {
-    cupWatchRotateRef.current = [cupWatchRotate0, cupWatchRotate1, cupWatchRotate2];
-  }
-  const cupWatchRotate = cupWatchRotateRef.current;
-
   const cupWinLiftRef = useRef<SharedValue<number>[] | null>(null);
   if (cupWinLiftRef.current === null) {
     cupWinLiftRef.current = [cupWinLift0, cupWinLift1, cupWinLift2];
   }
   const cupWinLift = cupWinLiftRef.current;
-
-  const cupWinRotateRef = useRef<SharedValue<number>[] | null>(null);
-  if (cupWinRotateRef.current === null) {
-    cupWinRotateRef.current = [cupWinRotate0, cupWinRotate1, cupWinRotate2];
-  }
-  const cupWinRotate = cupWinRotateRef.current;
 
   const wobbleXRef = useRef<SharedValue<number>[] | null>(null);
   if (wobbleXRef.current === null) {
@@ -534,10 +565,7 @@ export default function ShellGamePlayScreen() {
   const roundRef = useRef(round);
   roundRef.current = round;
 
-  const getCupX = useCallback(
-    (slot: number) => layoutRef.current.baseX + slot * (CUP_SIZE + CUP_SPACING),
-    []
-  );
+  const getCupX = useCallback((slot: number) => slot * layoutRef.current.stride, []);
 
   const syncCupXToLayout = useCallback(() => {
     for (let i = 0; i < 3; i++) {
@@ -568,8 +596,10 @@ export default function ShellGamePlayScreen() {
           highScoreRef.current = n;
           setHighScore(n);
         }
-      } catch {
-        /* ignore */
+      } catch (e) {
+        if (__DEV__) {
+          console.warn('[ShellGame] Failed to load high score from storage', e);
+        }
       }
     })();
   }, []);
@@ -641,18 +671,33 @@ export default function ShellGamePlayScreen() {
     state.game_phase === 'watching' && state.ball_position !== null && !shuffling;
   const ballUnder = state.ball_position ?? localBallPick ?? 0;
   const showResult = state.game_phase === 'result';
+
+  /** Debug: ball visibility flags (see console in dev). */
+  const showBall = showBallWatch;
+  const ballVisible =
+    (showBallWatch && state.ball_position !== null) ||
+    (showResult && state.ball_position !== null);
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    console.log('[ShellGame ball]', {
+      currentCupIndex: state.ball_position,
+      showBall,
+      ballVisible,
+    });
+  }, [state.ball_position, showBall, ballVisible, showResult]);
   const guesserChoice = state.guesser_choice ?? -1;
   const won = state.winner === 'guesser';
   const isGuessingPhase = state.game_phase === 'guessing';
+  /** True when the guesser may interact: guessing phase and shuffle motion finished (`shuffling` false). */
+  const guessInteractionReady = isGuessingPhase && !shuffling;
 
   /** Phase 1: one clean lift; ball stays visible for BALL_HOLD_MS (host timer handles lower → shuffle). */
   useEffect(() => {
     if (!showBallWatch || state.ball_position === null) {
       for (let c = 0; c < 3; c++) {
         cancelAnimation(cupWatchLift[c]);
-        cancelAnimation(cupWatchRotate[c]);
         cupWatchLift[c].value = 0;
-        cupWatchRotate[c].value = 0;
       }
       return;
     }
@@ -661,27 +706,22 @@ export default function ShellGamePlayScreen() {
     for (let c = 0; c < 3; c++) {
       if (c !== i) {
         cancelAnimation(cupWatchLift[c]);
-        cancelAnimation(cupWatchRotate[c]);
         cupWatchLift[c].value = 0;
-        cupWatchRotate[c].value = 0;
       }
     }
 
     cancelAnimation(cupWatchLift[i]);
-    cancelAnimation(cupWatchRotate[i]);
-    cupWatchLift[i].value = withSpring(-102, { damping: 14, stiffness: 200 });
-    cupWatchRotate[i].value = withSpring(-10, { damping: 15, stiffness: 210 });
+    cupWatchLift[i].value = withSpring(-40, { damping: 14, stiffness: 200 });
 
     return () => {
       cancelAnimation(cupWatchLift[i]);
-      cancelAnimation(cupWatchRotate[i]);
     };
-  }, [showBallWatch, state.ball_position, cupWatchLift, cupWatchRotate]);
+  }, [showBallWatch, state.ball_position, cupWatchLift]);
 
   useEffect(() => {
     cancelAnimation(guessScale);
     guessScale.value = 1;
-    if (shuffling || !canGuess || state.game_phase !== 'guessing') return;
+    if (shuffling || state.game_phase !== 'guessing') return;
 
     guessScale.value = withRepeat(
       withSequence(
@@ -695,12 +735,12 @@ export default function ShellGamePlayScreen() {
       cancelAnimation(guessScale);
       guessScale.value = 1;
     };
-  }, [shuffling, canGuess, state.game_phase, guessScale]);
+  }, [shuffling, state.game_phase, guessScale]);
 
   useEffect(() => {
     cancelAnimation(pickGlow);
     pickGlow.value = 0;
-    if (shuffling || !canGuess || state.game_phase !== 'guessing') return;
+    if (shuffling || state.game_phase !== 'guessing') return;
 
     pickGlow.value = withRepeat(
       withSequence(
@@ -714,11 +754,10 @@ export default function ShellGamePlayScreen() {
       cancelAnimation(pickGlow);
       pickGlow.value = 0;
     };
-  }, [shuffling, canGuess, state.game_phase, pickGlow]);
+  }, [shuffling, state.game_phase, pickGlow]);
 
   const onShuffleAnimationsDone = useCallback(() => {
     setShuffling(false);
-    setCanGuess(true);
     cupShuffleY[0].value = 0;
     cupShuffleY[1].value = 0;
     cupShuffleY[2].value = 0;
@@ -744,11 +783,9 @@ export default function ShellGamePlayScreen() {
     (seq: [number, number][], roundIndex: number) => {
       shuffleSeqRef.current = seq;
       setShuffling(true);
-      setCanGuess(false);
       playClick();
 
-      const getX = (slot: number) =>
-        layoutRef.current.baseX + slot * (CUP_SIZE + CUP_SPACING);
+      const getX = (slot: number) => slot * layoutRef.current.stride;
 
       for (let i = 0; i < 3; i++) {
         cupShuffleY[i].value = 0;
@@ -824,7 +861,10 @@ export default function ShellGamePlayScreen() {
       state.game_phase === 'shuffling' &&
       state.shuffle_sequence.length > 0 &&
       state.ball_position !== null &&
-      !shuffling
+      !shuffling &&
+      // Guard: don't re-trigger if this sequence was already started (shuffleSeqRef is set
+      // to the same reference inside runShuffleFromSequence, so equality means already running).
+      shuffleSeqRef.current !== state.shuffle_sequence
     ) {
       runShuffleFromSequence(state.shuffle_sequence, round);
     }
@@ -873,12 +913,7 @@ export default function ShellGamePlayScreen() {
     const holdTimer = setTimeout(() => {
       if (cancelled) return;
       cancelAnimation(cupWatchLift[cupIdx]);
-      cancelAnimation(cupWatchRotate[cupIdx]);
       cupWatchLift[cupIdx].value = withTiming(0, {
-        duration: CUP_LOWER_MS,
-        easing: Easing.out(Easing.cubic),
-      });
-      cupWatchRotate[cupIdx].value = withTiming(0, {
         duration: CUP_LOWER_MS,
         easing: Easing.out(Easing.cubic),
       });
@@ -898,7 +933,6 @@ export default function ShellGamePlayScreen() {
     state.ball_position,
     runShuffleFromSequence,
     cupWatchLift,
-    cupWatchRotate,
   ]);
 
   const handleHostPickCup = useCallback(
@@ -1016,21 +1050,14 @@ export default function ShellGamePlayScreen() {
       cupWinLift[0].value = 0;
       cupWinLift[1].value = 0;
       cupWinLift[2].value = 0;
-      cupWinRotate[0].value = 0;
-      cupWinRotate[1].value = 0;
-      cupWinRotate[2].value = 0;
       const bi = ballUnder;
       cupWinLift[bi].value = withSequence(
         withSpring(-92, { damping: 10, stiffness: 260 }),
         withSpring(-36, { damping: 11, stiffness: 220 }),
         withDelay(260, withSpring(0, { damping: 14, stiffness: 150 })),
       );
-      cupWinRotate[bi].value = withSequence(
-        withSpring(-12, { damping: 11, stiffness: 240 }),
-        withDelay(320, withSpring(0, { damping: 15, stiffness: 150 })),
-      );
     },
-    [greenFlash, winTextScale, flyPointsY, flyPointsOp, cupWinLift, cupWinRotate, ballUnder],
+    [greenFlash, winTextScale, flyPointsY, flyPointsOp, cupWinLift, ballUnder],
   );
 
   const playLoseEffects = useCallback(
@@ -1089,11 +1116,9 @@ export default function ShellGamePlayScreen() {
       }
 
       cupWinLift[ballUnder].value = 0;
-      cupWinRotate[ballUnder].value = 0;
       cupWinLift[ballUnder].value = withSpring(-76, { damping: 12, stiffness: 180 });
-      cupWinRotate[ballUnder].value = withSpring(-10, { damping: 12, stiffness: 180 });
     },
-    [redFlash, screenShake, loseTextShake, wobbleX, streakLostOp, cupWinLift, cupWinRotate, ballUnder],
+    [redFlash, screenShake, loseTextShake, wobbleX, streakLostOp, cupWinLift, ballUnder],
   );
 
   const greenFlashStyle = useAnimatedStyle(() => ({ opacity: greenFlash.value }));
@@ -1183,7 +1208,7 @@ export default function ShellGamePlayScreen() {
   const handleGuesserPickCup = useCallback(
     async (cupId: number) => {
       const canActAsGuesser = !amHost || isLocal;
-      if (!canActAsGuesser || state.game_phase !== 'guessing' || !canGuess || shuffling) return;
+      if (!canActAsGuesser || state.game_phase !== 'guessing' || shuffling) return;
 
       const ballPos = state.ball_position ?? localBallPick;
       if (ballPos === null) return;
@@ -1228,7 +1253,6 @@ export default function ShellGamePlayScreen() {
       amHost,
       state.game_phase,
       state.ball_position,
-      canGuess,
       shuffling,
       localBallPick,
       isLocal,
@@ -1251,12 +1275,11 @@ export default function ShellGamePlayScreen() {
       winner: null,
       guesser_choice: null,
     });
-    setCanGuess(false);
     setShuffling(false);
     cancelAnimation(shufflePulseScale);
     shufflePulseScale.value = 1;
     for (let i = 0; i < 3; i++) {
-      const target = layoutRef.current.baseX + i * (CUP_SIZE + CUP_SPACING);
+      const target = i * layoutRef.current.stride;
       cupX[i].value = withTiming(target, { duration: 520, easing: Easing.out(Easing.cubic) });
     }
     wobbleX[0].value = 0;
@@ -1265,10 +1288,7 @@ export default function ShellGamePlayScreen() {
     cupWinLift[0].value = 0;
     cupWinLift[1].value = 0;
     cupWinLift[2].value = 0;
-    cupWinRotate[0].value = 0;
-    cupWinRotate[1].value = 0;
-    cupWinRotate[2].value = 0;
-  }, [isLocal, cupX, wobbleX, cupWinLift, cupWinRotate, crownBounce, shufflePulseScale]);
+  }, [isLocal, cupX, wobbleX, cupWinLift, crownBounce, shufflePulseScale]);
 
   const handleCupPress = useCallback(
     (cupId: number) => {
@@ -1326,29 +1346,28 @@ export default function ShellGamePlayScreen() {
         </View>
 
         <View style={styles.feltPad}>
-          <LinearGradient
-            colors={[FELT_DEEP, '#0e4a35', FELT_GREEN, '#082818', FELT_DEEP]}
-            locations={[0, 0.22, 0.48, 0.72, 1]}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 1 }}
-            style={StyleSheet.absoluteFill}
-            pointerEvents="none"
-          />
-          <View style={styles.feltVignette} pointerEvents="none" />
-          <LinearGradient
-            colors={['rgba(255,255,255,0.07)', 'transparent', 'transparent']}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 0.55 }}
-            style={styles.feltTopSheen}
-            pointerEvents="none"
-          />
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.22)']}
-            start={{ x: 0.5, y: 0.35 }}
-            end={{ x: 0.5, y: 1 }}
-            style={styles.feltInnerShadow}
-            pointerEvents="none"
-          />
+          <View style={styles.feltPadBgClip} pointerEvents="none">
+            <LinearGradient
+              colors={[SHELL_CARD_GRADIENT_TOP, SHELL_CARD_GRADIENT_BOTTOM]}
+              locations={[0, 1]}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.feltVignette} />
+            <LinearGradient
+              colors={['rgba(255,255,255,0.07)', 'transparent', 'transparent']}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 0.55 }}
+              style={styles.feltTopSheen}
+            />
+            <LinearGradient
+              colors={['transparent', 'rgba(0,0,0,0.22)']}
+              start={{ x: 0.5, y: 0.35 }}
+              end={{ x: 0.5, y: 1 }}
+              style={styles.feltInnerShadow}
+            />
+          </View>
           <View style={styles.container}>
             {state.game_phase === 'hiding' && amHost && (
               <ThemedText style={styles.phaseHint} darkColor="rgba(255,255,255,0.82)">
@@ -1365,16 +1384,21 @@ export default function ShellGamePlayScreen() {
             ) : shuffling ? (
               <WatchPulseTitle active>Shuffling</WatchPulseTitle>
             ) : null}
-            {isGuessingPhase && canGuess && !shuffling && (
+            {guessInteractionReady && (
               <View style={styles.pickRow}>
                 <MaterialIcons name="touch-app" size={18} color={GOLD_MID} />
                 <Text style={styles.pickTitle}>Your pick</Text>
               </View>
             )}
 
+            <View style={styles.cupsTrackGrow}>
             <View
               style={styles.cupsContainer}
-              onLayout={(e) => setTrackLayoutW(e.nativeEvent.layout.width)}
+              onLayout={(e) => {
+                const { width, height } = e.nativeEvent.layout;
+                setTrackLayoutW(width);
+                setCupsAreaHeight(height);
+              }}
             >
               {[0, 1, 2].map((cupId) => {
                 const isCorrectCup = cupId === ballUnder;
@@ -1388,13 +1412,13 @@ export default function ShellGamePlayScreen() {
                     cupX={cupX}
                     cupShuffleY={cupShuffleY}
                     cupWatchLift={cupWatchLift}
-                    cupWatchRotate={cupWatchRotate}
                     cupWinLift={cupWinLift}
-                    cupWinRotate={cupWinRotate}
                     wobbleX={wobbleX}
                     guessScale={guessScale}
                     shufflePulseScale={shufflePulseScale}
                     pickGlow={pickGlow}
+                    cupOuterWidth={cupRowMetrics.cupW}
+                    cupTopPx={cupTopPx}
                     overlay={
                       flyPoints && isCorrectCup && won ? (
                         <Reanimated.View style={[styles.flyPts, flyPtsStyle]} pointerEvents="none">
@@ -1403,27 +1427,23 @@ export default function ShellGamePlayScreen() {
                       ) : null
                     }
                   >
-                    <View style={styles.cupTableShadow} />
-                    <Pressable
+                    <TouchableOpacity
+                      activeOpacity={0.88}
                       onPress={() => handleCupPress(cupId)}
-                      style={({ pressed }) => [
-                        styles.cupHit,
-                        pressed &&
-                          ((amHost && state.game_phase === 'hiding') ||
-                            ((!amHost || isLocal) && isGuessingPhase && canGuess)) &&
-                          styles.cupPressed,
-                      ]}
+                      style={styles.cupHit}
                       disabled={
                         !(
                           (amHost && state.game_phase === 'hiding') ||
-                          ((!amHost || isLocal) &&
-                            state.game_phase === 'guessing' &&
-                            canGuess &&
-                            !shuffling)
+                          ((!amHost || isLocal) && guessInteractionReady)
                         )
                       }
                     >
-                      <PremiumCup>
+                      <PremiumCup
+                        ballAboveCupBody={
+                          (showBallWatch && isCorrectCup) ||
+                          (showResult && (isCorrectCup || isWrongGuess))
+                        }
+                      >
                         {showWatchBall && (
                           <View style={styles.ballInCup}>
                             <GlowingBall pulse />
@@ -1440,10 +1460,11 @@ export default function ShellGamePlayScreen() {
                           </View>
                         )}
                       </PremiumCup>
-                    </Pressable>
+                    </TouchableOpacity>
                   </CupMotionWrapper>
                 );
               })}
+            </View>
             </View>
 
             {isGuessingPhase && !shuffling && !showResult ? (
@@ -1480,8 +1501,6 @@ export default function ShellGamePlayScreen() {
               </Reanimated.View>
             )}
 
-            <View style={styles.boardSpacer} />
-
             <View style={styles.roomCodeWrap}>
               <Text style={styles.roomCode}>{roomCode}</Text>
             </View>
@@ -1505,11 +1524,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.04)',
     transform: [{ rotate: '45deg' }],
   },
-  screenInner: { flex: 1 },
+  screenInner: { flex: 1, flexDirection: 'column', minHeight: 0 },
   statsBarRow: {
     paddingHorizontal: 10,
     paddingBottom: 6,
     alignItems: 'center',
+    flexShrink: 0,
   },
   statsBarWrap: {
     width: '100%',
@@ -1575,21 +1595,26 @@ const styles = StyleSheet.create({
     marginVertical: 2,
   },
   feltPad: {
+    flex: 1,
+    minHeight: 0,
     alignSelf: 'stretch',
-    flexGrow: 0,
-    flexShrink: 1,
-    marginHorizontal: 10,
-    marginBottom: 10,
+    marginHorizontal: 8,
+    marginBottom: 8,
     borderRadius: 22,
-    backgroundColor: WOOD_DARK,
+    backgroundColor: SHELL_CARD_GRADIENT_TOP,
     borderWidth: 3,
-    borderColor: WOOD_EDGE,
-    overflow: 'hidden',
+    borderColor: SHELL_CARD_BORDER,
+    overflow: 'visible',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.55,
     shadowRadius: 20,
     elevation: 14,
+  },
+  feltPadBgClip: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 19,
+    overflow: 'hidden',
   },
   feltVignette: {
     ...StyleSheet.absoluteFillObject,
@@ -1611,12 +1636,15 @@ const styles = StyleSheet.create({
     borderRadius: 18,
   },
   container: {
+    flex: 1,
+    minHeight: 0,
     width: '100%',
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingTop: 4,
-    paddingBottom: 12,
+    paddingBottom: 10,
     alignItems: 'center',
     justifyContent: 'flex-start',
+    zIndex: 1,
   },
   centered: { justifyContent: 'center', alignItems: 'center', gap: 16 },
   phaseHint: {
@@ -1654,13 +1682,24 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.92)',
     letterSpacing: 0.3,
   },
-  cupsContainer: {
+  cupsTrackGrow: {
+    flex: 1,
+    minHeight: 0,
     width: '100%',
-    marginTop: 24,
-    minHeight: CUP_BODY_H + RIM_H + BASE_H + 48,
-    position: 'relative',
+    alignSelf: 'stretch',
+    justifyContent: 'center',
     alignItems: 'center',
-    justifyContent: 'flex-end',
+  },
+  cupsContainer: {
+    flex: 1,
+    minHeight: 0,
+    width: '100%',
+    maxWidth: '100%',
+    position: 'relative',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    overflow: 'visible',
+    paddingHorizontal: ROW_H_PAD,
   },
   cupsHint: {
     marginTop: 14,
@@ -1674,27 +1713,29 @@ const styles = StyleSheet.create({
   cupOuter: {
     position: 'absolute',
     left: 0,
-    bottom: 28,
-    width: CUP_SIZE,
     alignItems: 'center',
   },
-  boardSpacer: {
-    width: '100%',
-    height: 16,
+  cupArtScaleWrap: {
+    alignItems: 'center',
+    overflow: 'visible',
   },
   cupGlowWrap: {
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowRadius: 26,
-    shadowOpacity: 0.62,
-    elevation: 16,
+    shadowColor: GLASS_PURPLE,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 16,
+    shadowOpacity: 0.45,
+    elevation: 12,
   },
-  cupTableShadow: {
+  cupTableShadowWrap: {
     position: 'absolute',
-    bottom: -10,
+    bottom: -8,
     width: CUP_SIZE * 0.95,
     height: 28,
+    alignSelf: 'center',
+  },
+  cupTableShadow: {
+    ...StyleSheet.absoluteFillObject,
     borderRadius: 999,
     backgroundColor: 'rgba(0,0,0,0.72)',
     opacity: 0.72,
@@ -1705,134 +1746,79 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     paddingBottom: 6,
   },
-  cupPressed: { opacity: 0.9 },
   cupColumn: {
-    width: CUP_SIZE,
+    width: CUP_LID_W,
     alignItems: 'center',
     position: 'relative',
   },
-  cupRimWrap: {
-    width: RIM_W,
-    height: RIM_H,
-    marginBottom: -3,
+  shellCupStack: {
+    width: CUP_LID_W,
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    zIndex: 4,
+    shadowColor: GLASS_PURPLE,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.55,
+    shadowRadius: 14,
+    elevation: 10,
   },
-  cupRimShadow: {
-    position: 'absolute',
-    bottom: -4,
-    width: RIM_W * 0.95,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    zIndex: 0,
-  },
-  cupRim: {
-    width: RIM_W,
-    height: RIM_H,
-    borderTopLeftRadius: 14,
-    borderTopRightRadius: 14,
+  shellLid: {
+    width: CUP_LID_W,
+    height: CUP_LID_H,
+    borderRadius: 8,
+    overflow: 'hidden',
     borderWidth: 1.5,
-    borderColor: 'rgba(255,248,220,0.55)',
-    zIndex: 1,
-    shadowColor: GOLD_HIGHLIGHT,
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.65,
-    shadowRadius: 8,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    zIndex: 3,
   },
-  cupRimSpecular: {
-    ...StyleSheet.absoluteFillObject,
-    borderTopLeftRadius: 14,
-    borderTopRightRadius: 14,
-    zIndex: 2,
-    opacity: 0.9,
+  shellLidShine: {
+    position: 'absolute',
+    top: 2,
+    left: 4,
+    width: '32%',
+    height: '55%',
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
   },
-  cupBodyShell: {
-    position: 'relative',
+  shellBody: {
     width: CUP_BODY_W,
     height: CUP_BODY_H,
-    borderTopLeftRadius: 10,
-    borderTopRightRadius: 10,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
+    marginTop: -CUP_BODY_OVERLAP,
+    borderRadius: 10,
     overflow: 'hidden',
-    zIndex: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.72,
-    shadowRadius: 16,
-    elevation: 14,
-  },
-  cupBody: {
-    ...StyleSheet.absoluteFillObject,
-    borderTopLeftRadius: 10,
-    borderTopRightRadius: 10,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
     borderWidth: 1.5,
-    borderColor: 'rgba(0,0,0,0.45)',
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    zIndex: 2,
   },
-  cupBodyLeftShade: {
-    ...StyleSheet.absoluteFillObject,
-    borderTopLeftRadius: 10,
-    borderTopRightRadius: 10,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-    opacity: 0.55,
-  },
-  cupBodySheen: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.85,
-  },
-  cupHighlightStreak: {
+  shellBodyShine: {
     position: 'absolute',
-    left: '14%',
-    top: '6%',
-    width: '26%',
-    height: '78%',
-    borderRadius: 5,
-    backgroundColor: 'rgba(255,255,255,0.42)',
-    opacity: 0.5,
-    transform: [{ skewY: '-10deg' }],
+    top: 8,
+    left: 8,
+    width: '28%',
+    height: '35%',
+    borderRadius: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
   },
-  cupInnerRim: {
-    position: 'absolute',
-    bottom: 0,
-    left: '6%',
-    right: '6%',
-    height: 10,
-    borderTopLeftRadius: 6,
-    borderTopRightRadius: 6,
-    backgroundColor: 'rgba(0,0,0,0.2)',
-  },
-  cupBase: {
-    width: BASE_W,
-    height: BASE_H,
-    borderBottomLeftRadius: 10,
-    borderBottomRightRadius: 10,
-    marginTop: -2,
-    zIndex: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.55,
-    shadowRadius: 6,
-    elevation: 6,
-  },
-  cupBaseEdge: {
-    width: BASE_W * 1.08,
-    height: 3,
-    marginTop: -1,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,220,120,0.25)',
-    zIndex: 1,
-  },
-  cupInnerSlot: {
+  shellInnerSlot: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-    top: RIM_H + 8,
-    bottom: BASE_H + 4,
+    top: 12,
+    bottom: 14,
+    left: 4,
+    right: 4,
+    zIndex: 0,
+  },
+  shellBase: {
+    width: CUP_BASE_W,
+    height: CUP_BASE_H,
+    borderRadius: 5,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    zIndex: 1,
+  },
+  cupInnerSlotAboveBody: {
+    zIndex: 3,
+    elevation: 18,
   },
   ballInCup: {
     marginTop: 6,
@@ -1842,71 +1828,33 @@ const styles = StyleSheet.create({
   ballGlowOuter: {
     alignItems: 'center',
     justifyContent: 'center',
-    width: BALL_SZ + 40,
-    height: BALL_SZ + 40,
+    width: BALL_SZ + 24,
+    height: BALL_SZ + 24,
   },
-  ballGlowRing: {
-    position: 'absolute',
-    width: BALL_SZ + 26,
-    height: BALL_SZ + 26,
-    borderRadius: (BALL_SZ + 26) / 2,
-    backgroundColor: 'rgba(255, 100, 40, 0.28)',
-    shadowColor: '#FF6600',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  ballPulse: {
-    position: 'absolute',
-    width: BALL_SZ + 34,
-    height: BALL_SZ + 34,
-    borderRadius: (BALL_SZ + 34) / 2,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 200, 120, 0.65)',
-    backgroundColor: 'rgba(255, 80, 30, 0.08)',
-  },
-  ballWrap: {
+  ballWhiteCircle: {
     width: BALL_SZ,
     height: BALL_SZ,
     borderRadius: BALL_SZ / 2,
+    backgroundColor: '#FFFFFF',
     overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: 'rgba(255, 200, 100, 0.5)',
-    shadowColor: '#FF2200',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.85,
+    shadowColor: GLASS_PURPLE,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
     shadowRadius: 10,
-    elevation: 10,
+    elevation: 6,
   },
-  ballCircle: {
-    width: BALL_SZ,
-    height: BALL_SZ,
-    borderRadius: BALL_SZ / 2,
-  },
-  ballInnerSheen: {
+  ballPurpleInnerGlow: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: BALL_SZ / 2,
   },
-  ballHighlight: {
+  ballPulse: {
     position: 'absolute',
-    top: 7,
-    left: 9,
-    width: 14,
-    height: 10,
-    borderRadius: 6,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    opacity: 0.92,
-    transform: [{ rotate: '-32deg' }],
-  },
-  ballRimLight: {
-    position: 'absolute',
-    bottom: 5,
-    right: 8,
-    width: 10,
-    height: 6,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,200,0.35)',
+    width: BALL_SZ + 14,
+    height: BALL_SZ + 14,
+    borderRadius: (BALL_SZ + 14) / 2,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.55)',
+    backgroundColor: 'transparent',
   },
   emptyX: {
     marginTop: 16,
@@ -1959,10 +1907,11 @@ const styles = StyleSheet.create({
   },
   streakLostText: { color: '#FECACA', fontWeight: '900', fontSize: 16 },
   roomCodeWrap: {
-    marginTop: 8,
+    marginTop: 10,
     width: '100%',
     alignItems: 'center',
     paddingBottom: 4,
+    flexShrink: 0,
   },
   roomCode: {
     fontSize: Typography.section,

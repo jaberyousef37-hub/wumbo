@@ -248,8 +248,8 @@ export default function ChatRoomScreen() {
           const parsed = JSON.parse(raw) as Record<string, Record<string, number>>;
           if (parsed && typeof parsed === 'object') setMessageReactions(parsed);
         }
-      } catch {
-        /* ignore */
+      } catch (e) {
+        if (__DEV__) console.warn('[Chat] Failed to load reactions from storage', e);
       }
     })();
     return () => {
@@ -302,7 +302,9 @@ export default function ChatRoomScreen() {
               const parsed = JSON.parse(raw) as unknown;
               if (Array.isArray(parsed)) setMessages(parsed as ChatMessage[]);
             }
-          } catch { /* ignore */ }
+          } catch (e) {
+            if (__DEV__) console.warn('[Chat] Failed to load messages from storage fallback', e);
+          }
         } finally {
           if (!cancelled) setMessagesHydrated(true);
         }
@@ -675,19 +677,19 @@ export default function ChatRoomScreen() {
     );
   };
 
-  /** Distance from window top to bottom of header — measured so KAV does not leave a gap above the keyboard. */
-  const keyboardVerticalOffset: number = Platform.OS === 'ios' ? (insets.top + headerHeight) : 0;
+  /** Distance from window top to top of KAV — equals the SafeAreaView's top inset on iOS. */
+  const keyboardVerticalOffset: number = Platform.OS === 'ios' ? insets.top : 0;
   const mainBottomInset = keyboardOpen ? 0 : tabBarHeight;
 
   return (
     <>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
-        keyboardVerticalOffset={keyboardVerticalOffset}
-        enabled={Platform.OS === 'ios'}
-      >
-        <SafeAreaView style={styles.flex} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.flex} edges={['top', 'left', 'right']}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={keyboardVerticalOffset}
+          enabled={Platform.OS === 'ios'}
+        >
           <View
             style={[
               styles.flex,
@@ -859,8 +861,8 @@ export default function ChatRoomScreen() {
               </View>
             </View>
           </View>
-        </SafeAreaView>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
 
       <Modal visible={showGamePicker} animationType="slide" transparent>
         <Pressable style={styles.pickerOverlay} onPress={() => setShowGamePicker(false)}>

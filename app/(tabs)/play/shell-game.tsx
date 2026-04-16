@@ -53,7 +53,8 @@ export default function ShellGameScreen() {
           myName: hostName,
         },
       });
-    } catch {
+    } catch (e) {
+      if (__DEV__) console.warn('[ShellGame] Supabase create failed, falling back to local mode', e);
       // Supabase failed: fall back to local single-player mode
       router.replace({
         pathname: '/(tabs)/play/shell-game-play' as '/',
