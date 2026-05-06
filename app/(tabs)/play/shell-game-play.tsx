@@ -107,13 +107,33 @@ const ROW_H_PAD = 16;
 
 function computeCupRowMetrics(trackWidth: number) {
   const inner = Math.max(0, trackWidth - ROW_H_PAD * 2);
-  const cupW = CUP_W;
-  const gap = inner > 0 ? Math.max(4, (inner - 3 * cupW) / 2) : CUP_SPACING;
+  if (inner <= 0) {
+    return {
+      inner: 0,
+      cupW: CUP_W,
+      gap: CUP_SPACING,
+      stride: CUP_W + CUP_SPACING,
+      edgeGap: CUP_SPACING,
+    };
+  }
+  /** Space-evenly lays 3 cups with 4 equal gaps (outer + between). Shrink the cup
+   *  proportionally when the track is too narrow so the 3rd cup is never clipped. */
+  const minGap = 8;
+  const widthForCups = inner - 4 * minGap;
+  const cupW =
+    widthForCups >= 3 * CUP_W ? CUP_W : Math.max(56, Math.floor(widthForCups / 3));
+  const gap = Math.max(minGap, (inner - 3 * cupW) / 4);
   const stride = cupW + gap;
   if (!Number.isFinite(stride) || stride <= 0) {
-    return { inner, cupW: CUP_W, gap: 12, stride: CUP_W + 12 };
+    return {
+      inner,
+      cupW: CUP_W,
+      gap: CUP_SPACING,
+      stride: CUP_W + CUP_SPACING,
+      edgeGap: CUP_SPACING,
+    };
   }
-  return { inner, cupW, gap, stride };
+  return { inner, cupW, gap, stride, edgeGap: gap };
 }
 
 type GamePhase = 'hiding' | 'watching' | 'shuffling' | 'guessing' | 'result';
@@ -469,9 +489,14 @@ export default function ShellGamePlayScreen() {
     const totalCupHeightPx = CUP_TOTAL_H * cupScale;
     return cupsAreaHeight / 2 - totalCupHeightPx / 2;
   }, [cupsAreaHeight, cupRowMetrics.cupW]);
-  const layoutRef = useRef({ stride: CUP_SIZE + CUP_SPACING, cupW: CUP_SIZE });
+  const layoutRef = useRef({
+    stride: CUP_SIZE + CUP_SPACING,
+    cupW: CUP_SIZE,
+    edgeGap: CUP_SPACING,
+  });
   layoutRef.current.stride = cupRowMetrics.stride;
   layoutRef.current.cupW = cupRowMetrics.cupW;
+  layoutRef.current.edgeGap = cupRowMetrics.edgeGap;
 
   const [state, setState] = useState<ShellGameState>({
     ball_position: null,
@@ -490,12 +515,24 @@ export default function ShellGamePlayScreen() {
   const [round, setRound] = useState(1);
   const [flyPoints, setFlyPoints] = useState<{ pts: number; key: number } | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
+  /** Confetti auto-hide timer; cleared on unmount so it can't fire `setShowConfetti` on a dead screen. */
+  const confettiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (confettiTimerRef.current) {
+        clearTimeout(confettiTimerRef.current);
+        confettiTimerRef.current = null;
+      }
+    };
+  }, []);
   const [newHighScore, setNewHighScore] = useState(false);
   const [streakLostVisible, setStreakLostVisible] = useState(false);
 
-  const cupX0 = useSharedValue(0);
-  const cupX1 = useSharedValue(0);
-  const cupX2 = useSharedValue(0);
+  /** Seed with first-frame metrics so the 3 cups aren't stacked at x=0 before onLayout fires. */
+  const initialMetrics = useRef(cupRowMetrics).current;
+  const cupX0 = useSharedValue(initialMetrics.edgeGap + 0 * initialMetrics.stride);
+  const cupX1 = useSharedValue(initialMetrics.edgeGap + 1 * initialMetrics.stride);
+  const cupX2 = useSharedValue(initialMetrics.edgeGap + 2 * initialMetrics.stride);
   const cupShuffleY0 = useSharedValue(0);
   const cupShuffleY1 = useSharedValue(0);
   const cupShuffleY2 = useSharedValue(0);
@@ -565,7 +602,10 @@ export default function ShellGamePlayScreen() {
   const roundRef = useRef(round);
   roundRef.current = round;
 
-  const getCupX = useCallback((slot: number) => slot * layoutRef.current.stride, []);
+  const getCupX = useCallback(
+    (slot: number) => layoutRef.current.edgeGap + slot * layoutRef.current.stride,
+    [],
+  );
 
   const syncCupXToLayout = useCallback(() => {
     for (let i = 0; i < 3; i++) {
@@ -785,7 +825,8 @@ export default function ShellGamePlayScreen() {
       setShuffling(true);
       playClick();
 
-      const getX = (slot: number) => slot * layoutRef.current.stride;
+      const getX = (slot: number) =>
+        layoutRef.current.edgeGap + slot * layoutRef.current.stride;
 
       for (let i = 0; i < 3; i++) {
         cupShuffleY[i].value = 0;
@@ -1023,7 +1064,11 @@ export default function ShellGamePlayScreen() {
 
       if (!spectator) {
         setShowConfetti(true);
-        setTimeout(() => setShowConfetti(false), 2400);
+        if (confettiTimerRef.current) clearTimeout(confettiTimerRef.current);
+        confettiTimerRef.current = setTimeout(() => {
+          confettiTimerRef.current = null;
+          setShowConfetti(false);
+        }, 2400);
       }
 
       cancelAnimation(winTextScale);
@@ -1279,7 +1324,7 @@ export default function ShellGamePlayScreen() {
     cancelAnimation(shufflePulseScale);
     shufflePulseScale.value = 1;
     for (let i = 0; i < 3; i++) {
-      const target = i * layoutRef.current.stride;
+      const target = layoutRef.current.edgeGap + i * layoutRef.current.stride;
       cupX[i].value = withTiming(target, { duration: 520, easing: Easing.out(Easing.cubic) });
     }
     wobbleX[0].value = 0;
@@ -1599,7 +1644,8 @@ const styles = StyleSheet.create({
     minHeight: 0,
     alignSelf: 'stretch',
     marginHorizontal: 8,
-    marginBottom: 8,
+    /** SafeAreaView already applies bottom inset; keep a tiny rim so the border is fully visible. */
+    marginBottom: 4,
     borderRadius: 22,
     backgroundColor: SHELL_CARD_GRADIENT_TOP,
     borderWidth: 3,

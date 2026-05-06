@@ -3,9 +3,18 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import Animated, {
+  Easing,
+  FadeIn,
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -66,7 +75,7 @@ function dailyFeaturedIndex(dateKey: string): number {
 function greetingPeriod(): 'morning' | 'afternoon' | 'evening' {
   const h = new Date().getHours();
   if (h < 12) return 'morning';
-  if (h < 17) return 'afternoon';
+  if (h < 18) return 'afternoon';
   return 'evening';
 }
 
@@ -93,6 +102,24 @@ const POPULAR: {
   { id: 'p2', name: 'Chess', icon: 'emoji-events', activeLabel: '890 playing', route: '/(tabs)/play/chess' },
   { id: 'p3', name: 'Trivia', icon: 'quiz', activeLabel: '1.4k playing', route: '/(tabs)/play/trivia' },
 ];
+
+function PulsingFire() {
+  const scale = useSharedValue(1);
+  useEffect(() => {
+    scale.value = withRepeat(
+      withSequence(
+        withTiming(1.18, { duration: 600, easing: Easing.inOut(Easing.quad) }),
+        withTiming(1, { duration: 600, easing: Easing.inOut(Easing.quad) }),
+      ),
+      -1,
+      false,
+    );
+  }, [scale]);
+  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <Animated.Text style={[styles.streakEmoji, animStyle]}>🔥</Animated.Text>
+  );
+}
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -129,6 +156,7 @@ export default function HomeScreen() {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
       >
         <LinearGradient
           colors={['#1e0b3d', '#4C1D95', '#5B21B6']}
@@ -162,7 +190,7 @@ export default function HomeScreen() {
               })}
             </ThemedText>
             <View style={styles.streakPill}>
-              <Text style={styles.streakEmoji}>🔥</Text>
+              <PulsingFire />
               <Text style={styles.streakLabel}>
                 Daily streak: <Text style={styles.streakCount}>{dailyStreak}</Text>{' '}
                 {dailyStreak === 1 ? 'day' : 'days'}
@@ -176,24 +204,33 @@ export default function HomeScreen() {
             <Text style={styles.sectionTitleContinue}>Continue playing</Text>
             <Pressable
               onPress={() => router.push(RECENT_GAME.route)}
-              style={({ pressed }) => [styles.continueCard, pressed && styles.pressed]}
+              style={({ pressed }) => [pressed && styles.pressed]}
             >
-              <View style={styles.continueIcon}>
-                <MaterialIcons name={RECENT_GAME.icon} size={44} color={ACCENT} />
-              </View>
-              <View style={styles.continueMain}>
-                <Text style={styles.continueName}>{RECENT_GAME.name}</Text>
-                <Text style={styles.continueSub}>{RECENT_GAME.subtitle}</Text>
-                <LinearGradient
-                  colors={[ACCENT, '#A78BFA']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.continueCta}
-                >
-                  <Text style={styles.continueCtaText}>Resume</Text>
-                  <MaterialIcons name="play-arrow" size={22} color="#fff" />
-                </LinearGradient>
-              </View>
+              <LinearGradient
+                colors={['#7C3AED', '#A78BFA', '#FF6FD8']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.continueGradientBorder}
+              >
+                <View style={styles.continueCard}>
+                  <View style={styles.continueIcon}>
+                    <MaterialIcons name={RECENT_GAME.icon} size={44} color={ACCENT} />
+                  </View>
+                  <View style={styles.continueMain}>
+                    <Text style={styles.continueName}>{RECENT_GAME.name}</Text>
+                    <Text style={styles.continueSub}>{RECENT_GAME.subtitle}</Text>
+                    <LinearGradient
+                      colors={[ACCENT, '#A78BFA']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.continueCta}
+                    >
+                      <Text style={styles.continueCtaText}>Resume</Text>
+                      <MaterialIcons name="play-arrow" size={22} color="#fff" />
+                    </LinearGradient>
+                  </View>
+                </View>
+              </LinearGradient>
             </Pressable>
           </Animated.View>
         )}
@@ -230,6 +267,8 @@ export default function HomeScreen() {
           </View>
           <ScrollView
             horizontal
+            nestedScrollEnabled
+            style={styles.popularScrollOuter}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.popularScroll}
           >
@@ -277,7 +316,7 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: Spacing.sm,
-    paddingBottom: Spacing.lg + Spacing.md,
+    paddingBottom: 100,
     gap: SECTION_GAP,
   },
   headerGradient: {
@@ -329,13 +368,20 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     marginBottom: Spacing.sm,
   },
+  continueGradientBorder: {
+    borderRadius: 24,
+    padding: 2,
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 14,
+    elevation: 10,
+  },
   continueCard: {
     flexDirection: 'row',
     alignItems: 'stretch',
     backgroundColor: CARD_ELEV,
     borderRadius: 22,
-    borderWidth: 1,
-    borderColor: 'rgba(124, 58, 237, 0.45)',
     padding: Spacing.md + 4,
     gap: Spacing.md,
     minHeight: 148,
@@ -403,6 +449,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   seeAll: { color: ACCENT, fontWeight: '700', fontSize: 14 },
+  popularScrollOuter: { flexGrow: 0 },
   popularScroll: { gap: CARD_GAP, paddingRight: Spacing.sm },
   popularCard: {
     width: 132,

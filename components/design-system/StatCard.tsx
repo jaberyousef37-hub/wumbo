@@ -55,8 +55,8 @@ const styles = StyleSheet.create({
   },
   value: {
     fontSize: 28,
-    fontWeight: '700',
-    color: colors.textPrimary,
+    fontWeight: '900',
+    color: '#A78BFA',
     fontVariant: ['tabular-nums'],
     letterSpacing: -0.3,
   },

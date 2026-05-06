@@ -3,7 +3,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   cancelAnimation,
   runOnJS,
@@ -46,9 +46,19 @@ import {
   type Suit,
 } from '@/lib/bs';
 
+/** Returns the human-readable rank noun, correctly singular/plural based on `count`.
+ *  e.g. (1, 'A') → "Ace", (2, 'A') → "Aces", (1, '5') → "5", (2, '5') → "5s".
+ *  Used in the pile claim line and the Recent Claims chips so the UI reads naturally
+ *  ("You claimed 2 Aces") instead of card-shorthand ("You played 2 As"). */
 function rankPluralWord(count: number, rank: Rank): string {
   const label = rankLabel(rank);
-  if (count <= 1) return label;
+  const singular =
+    label === 'A' ? 'Ace'
+    : label === 'K' ? 'King'
+    : label === 'Q' ? 'Queen'
+    : label === 'J' ? 'Jack'
+    : label;
+  if (count <= 1) return singular;
   if (label === 'A') return 'Aces';
   if (label === 'K') return 'Kings';
   if (label === 'Q') return 'Queens';
@@ -56,14 +66,9 @@ function rankPluralWord(count: number, rank: Rank): string {
   return `${label}s`;
 }
 
-function formatLastPlayLine(players: BsGameState['players'], lp: LastPlay): string {
-  const name = players[lp.playerId]?.name ?? 'Player';
-  const rw = rankPluralWord(lp.cards.length, lp.claimedRank);
-  return `${name} played ${lp.cards.length} ${rw}`;
-}
-
-function formatClaimLine(players: BsGameState['players'], lp: LastPlay): string {
-  const name = players[lp.playerId]?.name ?? 'Player';
+/** Recent-claims chip: "You" for human seat. */
+function formatHistoryChipLine(players: BsGameState['players'], lp: LastPlay): string {
+  const name = lp.playerId === 0 ? 'You' : (players[lp.playerId]?.name ?? 'Player');
   const rw = rankPluralWord(lp.cards.length, lp.claimedRank);
   return `${name} claimed ${lp.cards.length} ${rw}`;
 }
@@ -75,13 +80,30 @@ function playerInitials(p: BsPlayer): string {
 const FLIP_STAGGER_MS = 520;
 const FLIP_ONE_MS = 920;
 
-const FELT = ['#0d5c2e', '#0a4a26', '#07361c'] as const;
-const FELT_RIM = '#042812';
+/** Poker-table theme: dark felt, purple accent, high contrast type. */
+const BG_DARK = '#0d0d0d';
+const FELT_BG = '#0f1a0f';
+const ACCENT_PURPLE = '#7C3AED';
+const ACCENT_PINK = '#FF6FD8';
+const DANGER_RED = '#ef4444';
+const SUCCESS_GREEN = '#22c55e';
+const ACCENT_RED = '#DC2626';
+const SURFACE_1 = '#1a1a1a';
+const SURFACE_2 = '#2a2a2a';
+const CHIP_UNSELECTED = '#1e1e1e';
+const CARD_BG = '#1a1a2e';
+const CARD_WHITE = '#fafafa';
+const BANNER_BG = '#111827';
+const TIMER_YELLOW = '#FDE047';
+const SUIT_RED = '#EF4444';
+const SUIT_BLACK = '#0d0d0d';
+const HAND_SUIT_RED = '#dc2626';
+const HAND_SUIT_BLACK = '#111111';
 const TURN_LIMIT_SEC = 10;
-
-function suitColor(suit: Suit): string {
-  return suit === 'hearts' || suit === 'diamonds' ? '#E53935' : '#1a1a1a';
-}
+/** Vertical space above the device safe area that the absolute-positioned tab bar occupies
+ *  (CustomTabBar ≈ 70px of visible chrome + its own safe-area paddingBottom). Reserving this
+ *  keeps the hand + controls from sliding under the tab bar. */
+const TAB_BAR_RESERVE = 84;
 
 function suitSymbol(suit: Suit): string {
   switch (suit) {
@@ -96,114 +118,106 @@ function suitSymbol(suit: Suit): string {
   }
 }
 
+/** Display suit for the claimed-reference card when no real card exists — cycles by rank; fallback ♠. */
+function defaultSuitForClaimedRank(rank: Rank): Suit {
+  const suits: Suit[] = ['spades', 'hearts', 'diamonds', 'clubs'];
+  if (rank < 1 || rank > 13) return 'spades';
+  return suits[(rank - 1) % 4]!;
+}
+
 function CardFace({
   card,
   w,
   h,
   small,
+  variant = 'default',
 }: {
   card: PlayingCard;
   w: number;
   h: number;
   small?: boolean;
+  variant?: 'default' | 'hand';
 }) {
-  const col = suitColor(card.suit);
+  const isHand = variant === 'hand';
+  const col =
+    card.suit === 'hearts' || card.suit === 'diamonds'
+      ? isHand
+        ? HAND_SUIT_RED
+        : SUIT_RED
+      : isHand
+        ? HAND_SUIT_BLACK
+        : SUIT_BLACK;
+  const label = rankLabel(card.rank);
+  const suit = suitSymbol(card.suit);
   return (
-    <View style={[styles.cardFace, { width: w, height: h }]}>
-      <Text style={[styles.cardCorner, small && styles.cardCornerSm, { color: col }]}>
-        {rankLabel(card.rank)}
-        {'\n'}
-        {suitSymbol(card.suit)}
+    <View style={[styles.cardFace, isHand && styles.cardFaceHand, { width: w, height: h }]}>
+      <View style={[styles.cardCornerTL, small && styles.cardCornerTLSm]}>
+        <Text
+          style={[
+            styles.cardCornerRank,
+            small && (isHand ? styles.cardCornerRankHand : styles.cardCornerRankSm),
+            { color: col },
+          ]}
+        >
+          {label}
+        </Text>
+        <Text
+          style={[
+            styles.cardCornerSuit,
+            small && (isHand ? styles.cardCornerSuitHand : styles.cardCornerSuitSm),
+            { color: col },
+          ]}
+        >
+          {suit}
+        </Text>
+      </View>
+      <Text style={[styles.cardCenterSuit, { color: col }, small && (isHand ? styles.cardCenterSuitHand : styles.cardCenterSuitSm)]}>
+        {suit}
       </Text>
-      <Text style={[styles.cardCenterSuit, { color: col }, small && styles.cardCenterSuitSm]}>
-        {suitSymbol(card.suit)}
-      </Text>
+      <View style={[styles.cardCornerBR, small && styles.cardCornerBRSm]}>
+        <Text
+          style={[
+            styles.cardCornerRank,
+            small && (isHand ? styles.cardCornerRankHand : styles.cardCornerRankSm),
+            { color: col },
+          ]}
+        >
+          {label}
+        </Text>
+        <Text
+          style={[
+            styles.cardCornerSuit,
+            small && (isHand ? styles.cardCornerSuitHand : styles.cardCornerSuitSm),
+            { color: col },
+          ]}
+        >
+          {suit}
+        </Text>
+      </View>
     </View>
   );
 }
 
 function CardBack({ w, h, small }: { w: number; h: number; small?: boolean }) {
   return (
-    <View style={[styles.cardFace, styles.cardBackOuter, styles.cardBackFill, { width: w, height: h }]}>
+    <View style={[styles.cardBackOuter, { width: w, height: h }]}>
       <Text style={[styles.bsBackText, small && styles.bsBackTextSm]}>BS</Text>
-    </View>
-  );
-}
-
-function OpponentSeat({
-  player,
-  isTurn,
-  totalPlayers,
-  seatIndex,
-}: {
-  player: BsGameState['players'][0];
-  isTurn: boolean;
-  totalPlayers: number;
-  seatIndex: number;
-}) {
-  const n = player.hand.length;
-  const w = 44;
-  const h = 64;
-  const spread = Math.min(5, 40 / Math.max(n, 1));
-  const overlap = n <= 1 ? 0 : -16;
-
-  let boxStyle: ViewStyle = styles.seatTop;
-  if (totalPlayers === 2 && seatIndex === 1) boxStyle = styles.seatTopCenter;
-  if (totalPlayers === 3) {
-    if (seatIndex === 1) boxStyle = styles.seatTopLeft;
-    if (seatIndex === 2) boxStyle = styles.seatTopRight;
-  }
-  if (totalPlayers === 4) {
-    if (seatIndex === 1) boxStyle = styles.seatMidLeft;
-    if (seatIndex === 2) boxStyle = styles.seatTopCenter;
-    if (seatIndex === 3) boxStyle = styles.seatMidRight;
-  }
-
-  return (
-    <View style={[styles.seat, boxStyle]}>
-      <View style={[styles.namePill, isTurn && styles.namePillActive]}>
-        <Text style={styles.namePillText} numberOfLines={1}>
-          {player.name}
-        </Text>
-      </View>
-      <View style={styles.countBadge}>
-        <Text style={styles.countBadgeText}>{n}</Text>
-      </View>
-      <View style={styles.opponentArc}>
-        {Array.from({ length: Math.min(n, 12) }).map((_, i) => {
-          const rot = (i - (Math.min(n, 12) - 1) / 2) * spread;
-          return (
-            <View
-              key={`${player.id}-c-${i}`}
-              style={[
-                styles.oppCardSlot,
-                { marginLeft: i === 0 ? 0 : overlap, transform: [{ rotate: `${rot}deg` }] },
-              ]}
-            >
-              <CardBack w={w} h={h} small />
-            </View>
-          );
-        })}
-      </View>
     </View>
   );
 }
 
 function FlipRevealCard({
   card,
-  claimedRank,
   width,
   height,
   index,
 }: {
   card: PlayingCard;
-  claimedRank: Rank;
   width: number;
   height: number;
   index: number;
 }) {
   const rot = useSharedValue(0);
-  const cardKey = `${card.id}|${claimedRank}`;
 
   useEffect(() => {
     cancelAnimation(rot);
@@ -212,7 +226,7 @@ function FlipRevealCard({
       index * FLIP_STAGGER_MS,
       withTiming(180, { duration: FLIP_ONE_MS, easing: Easing.out(Easing.cubic) }),
     );
-  }, [cardKey, index, rot]);
+  }, [card.id, index, rot]);
 
   const frontStyle = useAnimatedStyle(() => {
     const v = rot.value;
@@ -235,16 +249,60 @@ function FlipRevealCard({
   });
 
   return (
-    <View style={{ width, height, marginHorizontal: 4 }}>
+    <View style={{ width, height }}>
+      {/* Front of the flip: the face-down "BS" card back. It rotates AWAY as the
+          flip progresses, revealing the real CardFace (rank + suit) on the back.
+          Using CardBack here (instead of a "claimed" pseudo-card) means the reveal
+          always shows the player's actual card, which is the whole point of BS. */}
       <Animated.View style={frontStyle}>
-        <View style={[styles.cardFace, styles.claimFace, { width, height }]}>
-          <Text style={styles.claimFaceText}>{rankLabel(claimedRank)}</Text>
-          <Text style={styles.claimFaceSub}>claimed</Text>
-        </View>
+        <CardBack w={width} h={height} />
       </Animated.View>
       <Animated.View style={backStyle}>
         <CardFace card={card} w={width} h={height} small />
       </Animated.View>
+    </View>
+  );
+}
+
+/** A purple-bordered reference card rendered alongside the revealed cards so the
+ *  player can visually compare what was CLAIMED against what was actually played.
+ *  Center shows a large suit (default suit for that rank). Corners show rank only. */
+function ClaimedRefCard({
+  rank,
+  width,
+  height,
+  compact,
+}: {
+  rank: Rank;
+  width: number;
+  height: number;
+  compact?: boolean;
+}) {
+  const label = rankLabel(rank);
+  const suit = defaultSuitForClaimedRank(rank);
+  const suitChar = suitSymbol(suit);
+  const suitCol = suit === 'hearts' || suit === 'diamonds' ? SUIT_RED : SUIT_BLACK;
+  return (
+    <View style={[styles.claimedRefCard, compact && styles.claimedRefCardCompact, { width, height }]}>
+      <View style={[styles.cardCornerTL, styles.cardCornerTLSm]}>
+        <Text style={[styles.cardCornerRank, styles.cardCornerRankSm, { color: SUIT_BLACK }]}>
+          {label}
+        </Text>
+        <Text style={[styles.cardCornerSuit, styles.cardCornerSuitSm, { color: suitCol }]}>
+          {suitChar}
+        </Text>
+      </View>
+      <Text style={[styles.claimedRefCenterSuit, compact && styles.claimedRefCenterSuitCompact, { color: suitCol }]}>
+        {suitChar}
+      </Text>
+      <View style={[styles.cardCornerBR, styles.cardCornerBRSm]}>
+        <Text style={[styles.cardCornerRank, styles.cardCornerRankSm, { color: SUIT_BLACK }]}>
+          {label}
+        </Text>
+        <Text style={[styles.cardCornerSuit, styles.cardCornerSuitSm, { color: suitCol }]}>
+          {suitChar}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -254,29 +312,147 @@ function FlipReveal({
   claimedRank,
   width,
   height,
+  compact,
 }: {
   cards: PlayingCard[];
   claimedRank: Rank;
   width: number;
   height: number;
+  compact?: boolean;
 }) {
-  return (
-    <View style={{ alignItems: 'center' }}>
-      <Text style={styles.flipHint}>Calling BS — revealing</Text>
-      <View style={[styles.flipRow, { minHeight: height }]}>
-        {cards.map((c, i) => (
-          <FlipRevealCard
-            key={c.id}
-            card={c}
-            claimedRank={claimedRank}
-            width={width}
-            height={height}
-            index={i}
-          />
-        ))}
+  const revealFade = useSharedValue(0);
+  const cardsKey = cards.map((c) => c.id).join(',');
+
+  useEffect(() => {
+    revealFade.value = 0;
+    revealFade.value = withTiming(1, { duration: 400, easing: Easing.out(Easing.ease) });
+  }, [claimedRank, cardsKey]);
+
+  const revealFadeStyle = useAnimatedStyle(() => ({
+    opacity: revealFade.value,
+    transform: [{ translateY: (1 - revealFade.value) * 20 }],
+  }));
+
+  const honestPlay = cardsMatchClaim(cards, claimedRank);
+  const revealTitle = honestPlay ? '😅 Honest! You take the pile.' : '🎉 Caught bluffing!';
+  const revealTitleColor = honestPlay ? DANGER_RED : SUCCESS_GREEN;
+
+  // Reference card + actual revealed cards. Once there are more than 3 actual cards
+  // the total row width exceeds even a wide phone, so wrap the row in a horizontal
+  // ScrollView; otherwise keep it a centered static row for a calmer layout.
+  const scrollable = cards.length > 3;
+
+  const slotLabClaimed = compact ? styles.flipSlotLabelCompact : styles.flipSlotLabel;
+  const slotLabActual = compact ? styles.flipSlotLabelActualCompact : styles.flipSlotLabelActual;
+  const cardBorder = compact ? styles.flipActualCardBorderCompact : styles.flipActualCardBorder;
+
+  const slots = (
+    <>
+      <View style={styles.flipSlot}>
+        <ClaimedRefCard rank={claimedRank} width={width} height={height} compact={compact} />
+        <Text style={slotLabClaimed}>CLAIMED</Text>
       </View>
+      {cards.map((c, i) => (
+        <View key={c.id} style={styles.flipSlot}>
+          <View style={cardBorder}>
+            <FlipRevealCard card={c} width={width} height={height} index={i} />
+          </View>
+          <Text style={slotLabActual}>ACTUAL</Text>
+        </View>
+      ))}
+    </>
+  );
+
+  return (
+    <View style={{ alignSelf: 'stretch', alignItems: 'center' }}>
+      <Text
+        style={[
+          compact ? styles.flipRevealTitleCompact : styles.flipRevealTitle,
+          compact ? null : styles.flipRevealTitleLarge,
+          { color: revealTitleColor },
+        ]}
+        numberOfLines={compact ? 2 : 4}
+      >
+        {revealTitle}
+      </Text>
+      <Animated.View style={[revealFadeStyle, { alignSelf: 'stretch', alignItems: 'center' }]}>
+        {scrollable ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.flipRowScroll}
+          >
+            {slots}
+          </ScrollView>
+        ) : (
+          <View style={styles.flipRow}>{slots}</View>
+        )}
+      </Animated.View>
     </View>
   );
+}
+
+/** Inline animated ellipsis for the AI-turn banner (presentation only). */
+function AiThinkingDots() {
+  const [dotCount, setDotCount] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setDotCount((n) => (n + 1) % 4), 400);
+    return () => clearInterval(id);
+  }, []);
+  return <Text style={styles.aiWaitHeaderDots}>{'.'.repeat(dotCount)}</Text>;
+}
+
+function HandCardSpring({ active, children }: { active: boolean; children: React.ReactNode }) {
+  const lift = useSharedValue(0);
+  const scale = useSharedValue(1);
+  useEffect(() => {
+    lift.value = withSpring(active ? -4 : 0, { damping: 16, stiffness: 260 });
+    scale.value = withSpring(active ? 1.02 : 1, { damping: 16, stiffness: 260 });
+  }, [active, lift, scale]);
+  const st = useAnimatedStyle(() => ({
+    transform: [{ translateY: lift.value }, { scale: scale.value }],
+  }));
+  return <Animated.View style={st}>{children}</Animated.View>;
+}
+
+function AvatarPulseRing({ active }: { active: boolean }) {
+  const pulse = useSharedValue(1);
+  const op = useSharedValue(0.6);
+  useEffect(() => {
+    cancelAnimation(pulse);
+    cancelAnimation(op);
+    if (!active) {
+      pulse.value = 1;
+      op.value = 0.6;
+      return;
+    }
+    pulse.value = withRepeat(
+      withSequence(
+        withTiming(1.15, { duration: 750, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1, { duration: 750, easing: Easing.inOut(Easing.sin) }),
+      ),
+      -1,
+      false,
+    );
+    op.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 750, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0.6, { duration: 750, easing: Easing.inOut(Easing.sin) }),
+      ),
+      -1,
+      false,
+    );
+    return () => {
+      cancelAnimation(pulse);
+      cancelAnimation(op);
+    };
+  }, [active, pulse, op]);
+  const ringStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pulse.value }],
+    opacity: op.value,
+  }));
+  if (!active) return null;
+  return <Animated.View pointerEvents="none" style={[styles.avatarPulseRing, ringStyle]} />;
 }
 
 function FlyCard({
@@ -332,7 +508,7 @@ function FlyCard({
 
   return (
     <Animated.View style={[styles.flyWrap, st]} pointerEvents="none">
-      <CardBack w={56} h={80} />
+      <CardBack w={36} h={48} small />
     </Animated.View>
   );
 }
@@ -354,12 +530,16 @@ export default function BsScreen() {
   const [playHistory, setPlayHistory] = useState<LastPlay[]>([]);
   const [turnSecondsLeft, setTurnSecondsLeft] = useState(TURN_LIMIT_SEC);
   const [bsFlash, setBsFlash] = useState<'green' | 'red' | null>(null);
+  const [aiToast, setAiToast] = useState<string | null>(null);
+  const aiToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scoredRef = useRef(false);
   const playSigRef = useRef(0);
   const flyDoneRef = useRef<() => void>(() => {});
   const playHistPhaseRef = useRef<BsPhase | null>(null);
   const lastHistSigRef = useRef('');
   const forcedPlayKeyRef = useRef('');
+  /** Tracks the short reveal-flash timeout so it never fires after unmount. */
+  const bsFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const startGame = useCallback(() => {
     setStarted(true);
@@ -379,6 +559,20 @@ export default function BsScreen() {
   useEffect(() => {
     if (playQty > maxPick) setPlayQty(Math.max(1, maxPick));
   }, [maxPick, playQty]);
+
+  // Unmount safety: ensure the reveal-flash timer never fires after the screen is gone.
+  useEffect(() => {
+    return () => {
+      if (bsFlashTimerRef.current) {
+        clearTimeout(bsFlashTimerRef.current);
+        bsFlashTimerRef.current = null;
+      }
+      if (aiToastTimerRef.current) {
+        clearTimeout(aiToastTimerRef.current);
+        aiToastTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const toggleCard = useCallback(
     (id: string) => {
@@ -444,8 +638,20 @@ export default function BsScreen() {
       setPlayHistory((h) =>
         [...h, { playerId: lp.playerId, claimedRank: lp.claimedRank, cards: [...lp.cards] }].slice(-5),
       );
+      // Top-of-screen ephemeral toast for AI plays so the player sees the claim
+      // even if they missed the fly-card animation.
+      if (lp.playerId !== 0) {
+        const aiName = game.players[lp.playerId]?.name ?? 'AI';
+        const rw = rankPluralWord(lp.cards.length, lp.claimedRank);
+        setAiToast(`${aiName} claimed ${lp.cards.length} ${rw}`);
+        if (aiToastTimerRef.current) clearTimeout(aiToastTimerRef.current);
+        aiToastTimerRef.current = setTimeout(() => {
+          aiToastTimerRef.current = null;
+          setAiToast(null);
+        }, 2000);
+      }
     }
-  }, [game?.phase, game?.lastPlay]);
+  }, [game?.phase, game?.lastPlay, game?.players]);
 
   useEffect(() => {
     if (!game || game.phase !== 'anim_play') return;
@@ -497,7 +703,11 @@ export default function BsScreen() {
         if (!g || g.phase !== 'bs_flip' || !g.lastPlay || g.bsCallerIndex == null) return g;
         const honest = cardsMatchClaim(g.lastPlay.cards, g.lastPlay.claimedRank);
         setBsFlash(honest ? 'red' : 'green');
-        setTimeout(() => setBsFlash(null), 560);
+        if (bsFlashTimerRef.current) clearTimeout(bsFlashTimerRef.current);
+        bsFlashTimerRef.current = setTimeout(() => {
+          bsFlashTimerRef.current = null;
+          setBsFlash(null);
+        }, 560);
         return finishBsFlip(g);
       });
     }, flipTotalMs);
@@ -551,65 +761,187 @@ export default function BsScreen() {
 
   const yourTurnPlaySelect = !!game && game.phase === 'play_select' && game.turnIndex === 0;
   const showTurnTimer = !!game && game.phase === 'play_select';
-  const bsBtnHint = canCallBs
-    ? 'Challenge last play'
-    : yourTurnPlaySelect
-      ? 'Your turn — play cards first'
-      : game?.phase === 'play_select'
-        ? 'Only after an opponent plays'
-        : game?.phase === 'anim_play'
-          ? 'Resolving play…'
-          : game?.phase === 'bs_flip'
-            ? 'Reveal in progress…'
-            : 'Wait for the next play';
 
-  const phaseBump = useSharedValue(1);
-  const prevPhaseRef = useRef<BsPhase>('play_select');
-  useEffect(() => {
-    if (!game) return;
-    const prev = prevPhaseRef.current;
-    prevPhaseRef.current = game.phase;
-    if (prev === 'bs_flip' && game.phase === 'play_select') {
-      phaseBump.value = withSequence(withTiming(1.08, { duration: 100 }), withTiming(1, { duration: 240 }));
+  const instructionUi = useMemo((): {
+    text: string;
+    stripe: string;
+    border: string;
+    textColor: string;
+    stripeW: number;
+    pulse: boolean;
+  } | null => {
+    if (!game || game.phase === 'game_over') return null;
+    if (game.phase === 'bs_flip') {
+      return {
+        text: 'Revealing... caught them or not? 😅',
+        stripe: '#F97316',
+        border: '#F97316',
+        textColor: '#fff',
+        stripeW: 4,
+        pulse: false,
+      };
     }
-  }, [game, phaseBump]);
+    if (game.phase === 'bs_window' && canCallBs) {
+      return {
+        text: '🚨 Think AI is lying? CALL BS now!',
+        stripe: DANGER_RED,
+        border: DANGER_RED,
+        textColor: DANGER_RED,
+        stripeW: 4,
+        pulse: true,
+      };
+    }
+    if (game.phase === 'bs_window') {
+      return {
+        text: 'Opponents deciding — did they buy it?',
+        stripe: '#6b7280',
+        border: '#6b7280',
+        textColor: '#fff',
+        stripeW: 4,
+        pulse: false,
+      };
+    }
+    if (game.phase === 'anim_play') {
+      return {
+        text: 'Watch closely — is AI bluffing? 👀',
+        stripe: '#6b7280',
+        border: '#6b7280',
+        textColor: '#fff',
+        stripeW: 4,
+        pulse: false,
+      };
+    }
+    if (game.phase === 'play_select' && game.turnIndex === 0) {
+      return {
+        text: `Play 1–4 cards claiming they are ${rankLabel(game.requiredRank)} 🃏`,
+        stripe: ACCENT_PURPLE,
+        border: ACCENT_PURPLE,
+        textColor: '#fff',
+        stripeW: 4,
+        pulse: false,
+      };
+    }
+    if (game.phase === 'play_select') {
+      return {
+        text: 'Watch closely — is AI bluffing? 👀',
+        stripe: '#6b7280',
+        border: '#6b7280',
+        textColor: '#fff',
+        stripeW: 4,
+        pulse: false,
+      };
+    }
+    return null;
+  }, [game, canCallBs]);
 
-  const turnPillAnimStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: phaseBump.value }],
+  const bsBtnTitle = useMemo(() => {
+    if (!game) return '🚨 CALL BS!';
+    if (canCallBs) return '🚨 CALL BS!';
+    if (game.phase === 'bs_flip') return 'Revealing...';
+    if (yourTurnPlaySelect) return 'Play cards first';
+    if (game.phase === 'anim_play') return 'Resolving play...';
+    if (game.phase === 'game_over') return 'Game over';
+    return 'Waiting...';
+  }, [game, canCallBs, yourTurnPlaySelect]);
+
+  /** Pulses an outline ring around the Call-BS button when it's actually callable.
+   *  Oscillates 0→1→0 continuously; mapped to opacity + scale in `bsPulseStyle`. */
+  const bsPulse = useSharedValue(0);
+  useEffect(() => {
+    cancelAnimation(bsPulse);
+    if (canCallBs) {
+      bsPulse.value = 0;
+      bsPulse.value = withRepeat(
+        withSequence(
+          withTiming(1, { duration: 650, easing: Easing.inOut(Easing.sin) }),
+          withTiming(0, { duration: 650, easing: Easing.inOut(Easing.sin) }),
+        ),
+        -1,
+        false,
+      );
+    } else {
+      bsPulse.value = 0;
+    }
+    return () => cancelAnimation(bsPulse);
+  }, [canCallBs, bsPulse]);
+
+  const bsPulseStyle = useAnimatedStyle(() => ({
+    opacity: 0.35 + bsPulse.value * 0.55,
+    transform: [{ scale: 1 + bsPulse.value * 0.03 }],
   }));
 
-  const glowPulse = useSharedValue(1);
+  const bsGlowRadius = useSharedValue(4);
   useEffect(() => {
-    if (!game || game.phase === 'game_over') {
-      cancelAnimation(glowPulse);
-      glowPulse.value = 1;
+    cancelAnimation(bsGlowRadius);
+    if (!canCallBs) {
+      bsGlowRadius.value = 4;
       return;
     }
-    glowPulse.value = withRepeat(
+    bsGlowRadius.value = withRepeat(
       withSequence(
-        withTiming(1.12, { duration: 750, easing: Easing.inOut(Easing.sin) }),
-        withTiming(1, { duration: 750, easing: Easing.inOut(Easing.sin) }),
+        withTiming(12, { duration: 500, easing: Easing.inOut(Easing.sin) }),
+        withTiming(4, { duration: 500, easing: Easing.inOut(Easing.sin) }),
       ),
       -1,
-      true,
+      false,
     );
-    return () => cancelAnimation(glowPulse);
-  }, [game, game?.phase, game?.turnIndex, glowPulse]);
+    return () => cancelAnimation(bsGlowRadius);
+  }, [canCallBs, bsGlowRadius]);
 
-  const glowDotStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: glowPulse.value }],
-    opacity: 0.82 + (glowPulse.value - 1) * 1.2,
+  const bsBtnGlowStyle = useAnimatedStyle(() => ({
+    shadowRadius: bsGlowRadius.value,
+    shadowOpacity: 0.6,
+    shadowColor: DANGER_RED,
+    shadowOffset: { width: 0, height: 0 },
   }));
 
-  const panelSlide = useSharedValue(160);
+  const instructionOp = useSharedValue(1);
+  const lastInstrRef = useRef<string | null>(null);
   useEffect(() => {
-    panelSlide.value = withSpring(yourTurnPlaySelect ? 0 : 168, { damping: 18, stiffness: 220 });
-  }, [yourTurnPlaySelect, panelSlide]);
+    if (!game) return;
+    const t = instructionUi?.text ?? '';
+    if (lastInstrRef.current === null) {
+      lastInstrRef.current = t;
+      instructionOp.value = 1;
+      return;
+    }
+    if (lastInstrRef.current === t) return;
+    lastInstrRef.current = t;
+    instructionOp.value = 0;
+    instructionOp.value = withTiming(1, { duration: 300 });
+  }, [game, instructionUi?.text, instructionOp]);
 
-  const humanPanelAnimStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: panelSlide.value }],
-    opacity: 1 - Math.min(1, panelSlide.value / 130),
+  const instructionBannerAnimStyle = useAnimatedStyle(() => ({
+    opacity: instructionOp.value,
   }));
+
+  const iBannerPulse = useSharedValue(1);
+  useEffect(() => {
+    cancelAnimation(iBannerPulse);
+    if (!instructionUi?.pulse) {
+      iBannerPulse.value = 1;
+      return;
+    }
+    iBannerPulse.value = withRepeat(
+      withSequence(
+        withTiming(1.025, { duration: 400, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1, { duration: 400, easing: Easing.inOut(Easing.sin) }),
+      ),
+      -1,
+      false,
+    );
+    return () => cancelAnimation(iBannerPulse);
+  }, [instructionUi?.pulse, iBannerPulse]);
+
+  const instructionPulseStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: iBannerPulse.value }],
+  }));
+
+  const lastSelectedId = useMemo(() => {
+    if (selected.size === 0) return null as string | null;
+    const arr = [...selected];
+    return arr[arr.length - 1] ?? null;
+  }, [selected]);
 
   const winnerStatsSubtitle = useMemo(() => {
     if (!game || game.phase !== 'game_over') return 'First to empty their hand wins.';
@@ -623,17 +955,16 @@ export default function BsScreen() {
   if (!started || !game) {
     return (
       <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
-        <LinearGradient colors={[...FELT]} style={StyleSheet.absoluteFill} />
         <View style={{ flex: 1, paddingTop: insets.top }}>
         <View style={styles.setupHeader}>
           <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
-            <MaterialIcons name="arrow-back" size={24} color="#e8ffe8" />
+            <MaterialIcons name="arrow-back" size={24} color="#fff" />
           </Pressable>
           <ThemedText type="defaultSemiBold" style={styles.setupTitle}>
             BS — Bullshit
           </ThemedText>
           <InGameChat selfName="You" opponentName="Table" opponentIsAi />
-          <HowToPlayButton gameId="bs" tint="#e8ffe8" />
+          <HowToPlayButton gameId="bs" tint="#fff" />
         </View>
         <View style={styles.setupBody}>
           <Text style={styles.setupLabel}>Players (you + AI)</Text>
@@ -663,7 +994,12 @@ export default function BsScreen() {
             ))}
           </View>
           <Pressable style={styles.startBtnWrap} onPress={startGame}>
-            <LinearGradient colors={['#FDE047', '#EAB308']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.startBtnGrad}>
+            <LinearGradient
+              colors={[ACCENT_PURPLE, ACCENT_PINK]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.startBtnGrad}
+            >
               <Text style={styles.startBtnText}>Deal</Text>
             </LinearGradient>
           </Pressable>
@@ -697,9 +1033,6 @@ export default function BsScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
-      <LinearGradient colors={[...FELT]} style={StyleSheet.absoluteFill} />
-      <View style={styles.rim} />
-
       {bsFlash ? (
         <View
           pointerEvents="none"
@@ -707,205 +1040,324 @@ export default function BsScreen() {
         />
       ) : null}
 
-      <View style={{ flex: 1, paddingTop: insets.top }}>
-      <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
-          <MaterialIcons name="arrow-back" size={24} color="#e8ffe8" />
-        </Pressable>
-        <Animated.View style={[styles.turnHeroInner, styles.turnHeroTopBar, turnPillAnimStyle]}>
-          <View style={styles.turnHeroTitleRow}>
-            <Text style={styles.turnHeroName} numberOfLines={1}>
-              {game.phase === 'game_over' ? 'Game over' : turnPlayer.name}
-            </Text>
-            {game.phase !== 'game_over' ? (
-              <Animated.View style={[styles.turnLiveDot, styles.turnLiveDotGlow, glowDotStyle]} />
-            ) : null}
-          </View>
-          <View style={styles.turnHeroTagRow}>
-            {turnTag ? (
-              <View style={styles.turnTagPill}>
-                <Text style={styles.turnTagPillText}>{turnTag}</Text>
+      {aiToast ? (
+        <View
+          pointerEvents="none"
+          style={[styles.aiToast, { top: insets.top + 8 }]}
+        >
+          <Text style={styles.aiToastText} numberOfLines={1}>
+            {aiToast}
+          </Text>
+        </View>
+      ) : null}
+
+      <View style={[styles.screen, { paddingTop: insets.top }]}>
+        <View style={styles.headerStatusRow}>
+          <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
+            <MaterialIcons name="arrow-back" size={24} color="#fff" />
+          </Pressable>
+          <View style={styles.statusBarCenter}>
+            {game.phase === 'play_select' && game.turnIndex === 0 ? (
+              <View style={styles.statusYourTurnCol}>
+                <View style={styles.statusRowLine}>
+                  <View style={styles.greenDot} />
+                  <Text style={styles.statusYourTurnLabel}>YOUR TURN</Text>
+                </View>
+                <View style={styles.claimRankPill}>
+                  <Text style={styles.claimRankPillText}>Claim: {rankLabel(game.requiredRank)}</Text>
+                </View>
+              </View>
+            ) : game.phase === 'play_select' && game.turnIndex !== 0 ? (
+              <View style={styles.aiWaitHeaderRow}>
+                <Text style={styles.aiWaitHeaderText}>⏳ Waiting for {turnPlayer.name}...</Text>
+                <AiThinkingDots />
+              </View>
+            ) : game.phase !== 'game_over' ? (
+              <View style={styles.statusFallbackCol}>
+                <Text style={styles.statusNameText} numberOfLines={1}>
+                  {turnPlayer.name}
+                </Text>
+                {turnTag ? <Text style={styles.statusPhaseSmall}>{turnTag}</Text> : null}
               </View>
             ) : null}
-            {game.phase === 'play_select' ? (
-              <Text style={styles.turnHeroSubInline}>Claim {rankLabel(game.requiredRank)}</Text>
-            ) : null}
           </View>
-        </Animated.View>
-        <View style={styles.topBarRight}>
-          {showTurnTimer ? (
-            <View style={[styles.timerBadge, turnSecondsLeft <= 3 && styles.timerBadgeUrgent]}>
-              <Text style={styles.timerBadgeText}>{turnSecondsLeft}s</Text>
-            </View>
-          ) : null}
-          <InGameChat selfName="You" opponentName="Table" opponentIsAi />
-          <HowToPlayButton gameId="bs" tint="#e8ffe8" />
-        </View>
-      </View>
-
-      <View style={styles.orderAvatarsRow}>
-        {game.players.map((p, i) => (
-          <View key={p.id} style={styles.orderAvatarCell}>
-            <View style={[styles.orderAvatarRing, game.turnIndex === i && styles.orderAvatarRingOn]}>
-              <Avatar initials={playerInitials(p)} size="small" />
-            </View>
-            <View style={styles.orderCountBadge}>
-              <Text style={styles.orderCountBadgeText}>{p.hand.length}</Text>
-            </View>
-            <Text style={styles.orderAvatarName} numberOfLines={1}>
-              {p.name}
-            </Text>
-          </View>
-        ))}
-      </View>
-
-      <View style={styles.table}>
-        {game.players.slice(1).map((p) => (
-          <OpponentSeat
-            key={p.id}
-            player={p}
-            isTurn={game.turnIndex === p.id}
-            totalPlayers={game.players.length}
-            seatIndex={p.id}
-          />
-        ))}
-
-        <View style={styles.centerZone}>
-          <FlyCard
-            active={fly}
-            onDone={onFlyDone}
-            fromPlayerId={game.lastPlay?.playerId ?? 0}
-            playerCount={game.players.length}
-          />
-          {showFlip && game.lastPlay ? (
-            <FlipReveal
-              cards={game.lastPlay.cards}
-              claimedRank={game.lastPlay.claimedRank}
-              width={54}
-              height={78}
-            />
-          ) : game.lastPlay != null && game.phase !== 'game_over' ? (
-            <View style={styles.claimCenter}>
-              <CardBack w={72} h={104} />
-              <Text style={styles.claimCenterText} numberOfLines={2}>
-                {formatClaimLine(game.players, game.lastPlay)}
+          <View style={styles.headerRightCluster}>
+            {showTurnTimer ? (
+              <Text
+                style={[
+                  styles.timerYellow,
+                  turnSecondsLeft <= 3 && styles.timerYellowUrgent,
+                ]}
+              >
+                ⏱ {turnSecondsLeft}s
               </Text>
-            </View>
-          ) : (
-            <View style={styles.pileStack}>
-              <View style={styles.pileBadge}>
-                <Text style={styles.pileBadgeBig}>{centerPile}</Text>
-                <Text style={styles.pileBadgeSub}>cards in pile</Text>
-              </View>
-              {centerPile > 0 && <CardBack w={64} h={92} />}
-            </View>
-          )}
+            ) : null}
+            <InGameChat selfName="You" opponentName="Table" opponentIsAi />
+            <HowToPlayButton gameId="bs" tint="#fff" />
+          </View>
         </View>
 
-        {playHistory.length > 0 && (
+        {instructionUi ? (
+          <Animated.View style={[instructionPulseStyle, styles.instructionPulseWrap]}>
+            <Animated.View style={instructionBannerAnimStyle}>
+              <View style={[styles.instructionBannerV2, { borderColor: instructionUi.border }]}>
+                <View
+                  style={[
+                    styles.instructionStripe,
+                    { width: instructionUi.stripeW, backgroundColor: instructionUi.stripe },
+                  ]}
+                />
+                <Text
+                  style={[styles.instructionBannerTextV2, { color: instructionUi.textColor }]}
+                  numberOfLines={3}
+                >
+                  {instructionUi.text}
+                </Text>
+              </View>
+            </Animated.View>
+          </Animated.View>
+        ) : null}
+
+        <View style={styles.orderAvatarsRow}>
+          {game.players.map((p, i) => {
+            const active = game.turnIndex === i;
+            return (
+              <View key={p.id} style={[styles.orderAvatarCell, !active && styles.orderAvatarCellDim]}>
+                <View style={styles.avatarRingWrap}>
+                  <AvatarPulseRing active={active} />
+                  <View style={styles.orderAvatarInner}>
+                    <Avatar initials={playerInitials(p)} size="mini" />
+                  </View>
+                </View>
+                <View style={styles.orderCountBadgeV2}>
+                  <Text style={styles.orderCountBadgeTextV2}>{p.hand.length}</Text>
+                </View>
+                <Text style={styles.orderAvatarNameV2} numberOfLines={1}>
+                  {p.name}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+
+        <Text style={styles.winReminderV2}>First to empty hand wins 🏆</Text>
+
+        <View style={styles.table}>
+          <View style={styles.feltTable}>
+            {game.phase !== 'game_over' ? (
+              <Text style={styles.feltRoundRank} numberOfLines={1}>
+                Round rank: {rankLabel(game.requiredRank)}
+                {centerPile > 0 ? ` · ${centerPile} in pile` : ''}
+              </Text>
+            ) : null}
+            <View style={styles.centerZone}>
+              <FlyCard
+                active={fly}
+                onDone={onFlyDone}
+                fromPlayerId={game.lastPlay?.playerId ?? 0}
+                playerCount={game.players.length}
+              />
+              {showFlip && game.lastPlay ? (
+                <FlipReveal
+                  cards={game.lastPlay.cards}
+                  claimedRank={game.lastPlay.claimedRank}
+                  width={34}
+                  height={46}
+                  compact
+                />
+              ) : (
+                <View style={styles.pileStack}>
+                  {centerPile > 0 ? (
+                    <View
+                      style={[
+                        styles.pileCardStackVertical,
+                        { height: 46 + (Math.min(centerPile, 5) - 1) * 2 },
+                      ]}
+                    >
+                      {Array.from({ length: Math.min(centerPile, 5) }).map((_, i) => {
+                        const rot = ((i * 5 + 1) % 9) - 4;
+                        return (
+                          <View
+                            key={`pile-${i}`}
+                            style={[
+                              styles.pileCardLayer,
+                              {
+                                top: i * 2,
+                                zIndex: i,
+                                transform: [{ rotate: `${rot}deg` }],
+                              },
+                            ]}
+                          >
+                            <CardBack w={34} h={46} />
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ) : (
+                    <View style={styles.pileEmptyV2}>
+                      <Text style={styles.pileEmptyTextV2}>Empty pile — play first!</Text>
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+          </View>
+        </View>
+
+        {playHistory.length > 0 ? (
           <View style={styles.historyBox}>
-            <Text style={styles.historyTitle}>Recent claims</Text>
-            <View style={styles.historyPillsRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.historyPillsRow}
+            >
               {[...playHistory].reverse().map((lp, i) => (
                 <View
                   key={`${lp.playerId}-${lp.cards.map((c) => c.id).join('-')}-${i}`}
-                  style={styles.historyPill}
+                  style={[
+                    styles.historyPillV2,
+                    i === 0 && styles.historyPillRecent,
+                  ]}
                 >
-                  <Text style={styles.historyPillText} numberOfLines={1}>
-                    {formatLastPlayLine(game.players, lp)}
+                  <Text
+                    style={[
+                      styles.historyPillTextV2,
+                      lp.playerId === 0 ? styles.historyTextYou : styles.historyTextAi,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {formatHistoryChipLine(game.players, lp)}
                   </Text>
                 </View>
               ))}
-            </View>
+            </ScrollView>
           </View>
-        )}
+        ) : null}
 
-        <Pressable
-          style={[styles.bsBtn, !canCallBs && styles.bsBtnMuted]}
-          disabled={!canCallBs}
-          onPress={handleBs}
-        >
-          <Text style={styles.bsBtnText}>Call BS! 🚨</Text>
-          <Text style={styles.bsBtnHint}>{bsBtnHint}</Text>
-        </Pressable>
-      </View>
-
-      {game.phase === 'play_select' && (
-        <Animated.View style={[styles.humanPanelOuter, humanPanelAnimStyle]}>
-          {game.turnIndex === 0 ? (
-            <View style={styles.humanPanel}>
-              <Text style={styles.panelLabel}>
-                Play {playQty} card{playQty > 1 ? 's' : ''} as {rankLabel(game.requiredRank)}
-              </Text>
-              <View style={styles.qtyRow}>
-                <Text style={styles.qtyHint}>How many</Text>
-                {[1, 2, 3, 4].map((n) => (
-                  <Pressable
-                    key={n}
-                    onPress={() => {
-                      setPlayQty(n);
-                      setSelected(new Set());
-                    }}
-                    style={[styles.qtyChip, playQty === n && styles.qtyChipOn, n > maxPick && styles.qtyChipOff]}
-                    disabled={n > maxPick}
-                  >
-                    <Text style={[styles.qtyChipText, playQty === n && styles.qtyChipTextOn]}>{n}</Text>
-                  </Pressable>
-                ))}
-              </View>
-              <Pressable
-                style={[
-                  styles.playBtn,
-                  selected.size !== playQty && styles.playBtnDisabled,
-                ]}
-                disabled={selected.size !== playQty}
-                onPress={handleHumanPlay}
-              >
-                <Text style={styles.playBtnText}>Play to pile</Text>
+        <View style={styles.controls}>
+          {canCallBs ? (
+            <Animated.View style={[styles.bsBtnGlowOuter, bsBtnGlowStyle]}>
+              <Pressable style={[styles.bsBtn, styles.bsBtnActive]} disabled={false} onPress={handleBs}>
+                <Animated.View pointerEvents="none" style={[styles.bsBtnPulseRing, bsPulseStyle]} />
+                <Text style={styles.bsBtnTextActive}>{bsBtnTitle}</Text>
               </Pressable>
+            </Animated.View>
+          ) : (
+            <Pressable
+              style={[styles.bsBtn, styles.bsBtnMutedV2]}
+              disabled={!canCallBs}
+              onPress={handleBs}
+            >
+              <Text style={styles.bsBtnTextMutedV2}>{bsBtnTitle}</Text>
+            </Pressable>
+          )}
+
+          {game.phase === 'play_select' && game.turnIndex === 0 ? (
+            <View style={styles.humanPanelOuter}>
+              <View style={styles.humanPanel}>
+                <View style={styles.qtyRowOuter}>
+                  <View style={styles.qtyRow}>
+                  <Text style={styles.qtyHint}>How many</Text>
+                  {[1, 2, 3, 4].map((n) => (
+                    <Pressable
+                      key={n}
+                      onPress={() => {
+                        setPlayQty(n);
+                        setSelected(new Set());
+                      }}
+                      style={[
+                        styles.qtyChipV2,
+                        playQty === n && styles.qtyChipV2On,
+                        n > maxPick && styles.qtyChipOff,
+                      ]}
+                      disabled={n > maxPick}
+                    >
+                      <Text
+                        style={[
+                          styles.qtyChipTextV2,
+                          playQty === n && styles.qtyChipTextV2On,
+                        ]}
+                      >
+                        {n}
+                      </Text>
+                    </Pressable>
+                  ))}
+                  </View>
+                </View>
+                <Pressable
+                  style={styles.playBtnWrap}
+                  disabled={selected.size !== playQty}
+                  onPress={handleHumanPlay}
+                >
+                  {selected.size > 0 ? (
+                    <LinearGradient
+                      colors={[ACCENT_PURPLE, ACCENT_PINK]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.playBtnGradV2}
+                    >
+                      <Text style={styles.playBtnTextV2}>Play to Pile ▶</Text>
+                    </LinearGradient>
+                  ) : (
+                    <View style={styles.playBtnInactiveV2}>
+                      <Text style={styles.playBtnInactiveTextV2}>Select a card first</Text>
+                    </View>
+                  )}
+                </Pressable>
+              </View>
             </View>
           ) : null}
-        </Animated.View>
-      )}
+        </View>
 
-      <View style={styles.handMeta}>
-        <Text style={styles.handMetaText}>
-          Your hand · {human?.hand.length ?? 0} cards
-        </Text>
-      </View>
-
-      <View style={styles.handRow}>
-        {human?.hand.map((c, index) => {
-          const on = selected.has(c.id);
-          const w = 58;
-          const h = 84;
-          const total = human.hand.length;
-          const mid = (total - 1) / 2;
-          const rot = (index - mid) * 3;
-          const overlap = index === 0 ? 0 : -26;
-          return (
-            <Pressable
-              key={c.id}
-              onPress={() => toggleCard(c.id)}
-              disabled={game.phase !== 'play_select' || game.turnIndex !== 0}
-              style={({ pressed }) => [
-                styles.handCardWrap,
-                {
-                  marginLeft: overlap,
-                  transform: [
-                    { rotate: `${rot}deg` },
-                    { translateY: pressed || on ? -10 : 0 },
-                  ],
-                },
-              ]}
-            >
-              <View style={[styles.handRing, on && styles.handRingOn]}>
-                <CardFace card={c} w={w} h={h} small />
-              </View>
-            </Pressable>
-          );
-        })}
-      </View>
+        <View style={styles.handDock}>
+          <View style={styles.handMeta}>
+            <Text style={styles.handMetaTextV2}>
+              Your hand · {human?.hand.length ?? 0} cards
+            </Text>
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.handScrollOuter}
+            contentContainerStyle={styles.handRow}
+          >
+            {human?.hand.map((c, index) => {
+              const on = selected.has(c.id);
+              const total = human.hand.length;
+              const mid = (total - 1) / 2;
+              const rot = (index - mid) * 3;
+              const handLocked = game.phase !== 'play_select' || game.turnIndex !== 0;
+              const showCountBadge = on && lastSelectedId === c.id && selected.size > 1;
+              return (
+                <Pressable
+                  key={c.id}
+                  onPress={() => toggleCard(c.id)}
+                  disabled={handLocked}
+                  style={[styles.handCardPressable, { marginLeft: index === 0 ? 0 : -10, zIndex: index }]}
+                >
+                  <HandCardSpring active={on}>
+                    <View style={[styles.handCardWrap, handLocked && styles.handCardLocked]}>
+                      <View
+                        style={[
+                          styles.handCardBody,
+                          on && styles.handCardBodyOnV2,
+                          { transform: [{ rotate: `${rot}deg` }] },
+                        ]}
+                      >
+                        <CardFace card={c} w={58} h={80} small variant="hand" />
+                        {showCountBadge ? (
+                          <View style={styles.multiSelectBadge} pointerEvents="none">
+                            <Text style={styles.multiSelectBadgeText}>{selected.size}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    </View>
+                  </HandCardSpring>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
 
       <WinnerModal
         visible={game.phase === 'game_over'}
@@ -931,310 +1383,457 @@ export default function BsScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: FELT[0] },
-  rim: {
-    ...StyleSheet.absoluteFillObject,
-    borderWidth: 10,
-    borderColor: FELT_RIM,
-    pointerEvents: 'none',
-  },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    paddingHorizontal: 6,
-    paddingBottom: 6,
-    gap: 6,
-  },
-  topBarRight: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  safe: { flex: 1, backgroundColor: BG_DARK },
+  /** Main column: fixed-height sections; `paddingBottom` clears tab bar + small inset. */
+  screen: { flex: 1, paddingBottom: TAB_BAR_RESERVE + 6, backgroundColor: BG_DARK },
+  /** Fixed controls strip between the pile area and the hand. Never scrolls, never flexes. */
+  controls: { flexShrink: 0, gap: 6 },
+
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  turnHeroTopBar: {
-    flex: 1,
-    minWidth: 0,
-    marginHorizontal: 4,
-  },
-  turnHeroInner: {
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    borderRadius: 14,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(250,204,21,0.4)',
-  },
-  turnHeroTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
-  turnHeroTagRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
-  turnTagPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    backgroundColor: 'rgba(168,85,247,0.35)',
-    borderWidth: 1,
-    borderColor: 'rgba(196,181,253,0.65)',
-  },
-  turnTagPillText: { color: '#F5F3FF', fontWeight: '900', fontSize: 11, letterSpacing: 0.8 },
-  turnHeroSubInline: { color: 'rgba(220,252,231,0.95)', fontWeight: '700', fontSize: 12 },
-  turnLiveDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#4ADE80',
-  },
-  turnLiveDotGlow: {
-    shadowColor: '#4ADE80',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.95,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  turnHeroName: { color: '#fff', fontWeight: '900', fontSize: 18, letterSpacing: -0.3, flex: 1 },
-  turnHeroSub: { color: 'rgba(220,252,231,0.9)', fontWeight: '700', fontSize: 13, marginTop: 4 },
-  bsFlashOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 50,
-    opacity: 0.42,
-  },
-  bsFlashGreen: { backgroundColor: '#22C55E' },
-  bsFlashRed: { backgroundColor: '#EF4444' },
-  timerBadge: {
-    minWidth: 52,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    backgroundColor: 'rgba(250,204,21,0.25)',
-    borderWidth: 1,
-    borderColor: 'rgba(250,204,21,0.55)',
+  headerStatusRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    height: 60,
+    maxHeight: 60,
+    marginBottom: 6,
+    gap: 8,
   },
-  timerBadgeUrgent: { backgroundColor: 'rgba(220,38,38,0.35)', borderColor: '#FCA5A5' },
-  timerBadgeText: { color: '#fff', fontWeight: '900', fontSize: 18 },
+  statusBarCenter: { flex: 1, minWidth: 0, justifyContent: 'center' },
+  statusYourTurnCol: { gap: 6 },
+  statusRowLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  greenDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: SUCCESS_GREEN },
+  statusYourTurnLabel: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  claimRankPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: ACCENT_PURPLE,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  claimRankPillText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  aiWaitHeaderRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 },
+  aiWaitHeaderText: { color: '#9ca3af', fontSize: 14, fontStyle: 'italic', fontWeight: '600' },
+  aiWaitHeaderDots: { color: '#9ca3af', fontSize: 14, fontWeight: '700', letterSpacing: 1 },
+  statusFallbackCol: { gap: 2 },
+  statusNameText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  statusPhaseSmall: { color: 'rgba(255,255,255,0.55)', fontSize: 11, fontWeight: '700' },
+  headerRightCluster: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  timerYellow: { color: TIMER_YELLOW, fontWeight: '900', fontSize: 15 },
+  timerYellowUrgent: { color: '#FCA5A5' },
+  instructionPulseWrap: { alignSelf: 'stretch', marginBottom: 6 },
+  instructionBannerV2: {
+    marginHorizontal: 12,
+    height: 36,
+    maxHeight: 36,
+    backgroundColor: BANNER_BG,
+    borderRadius: 10,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  instructionBannerTextV2: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    lineHeight: 14,
+  },
+
+  // BS reveal flash overlay — semantic (green = caught lying, red = honest claim)
+  bsFlashOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 50, opacity: 0.42 },
+  bsFlashGreen: { backgroundColor: SUCCESS_GREEN },
+  bsFlashRed: { backgroundColor: DANGER_RED },
+
+  // Top-of-screen ephemeral toast for AI plays.
+  aiToast: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    zIndex: 60,
+    backgroundColor: 'rgba(124,58,237,0.95)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 12,
+  },
+  aiToastText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+  },
+
+  instructionStripe: {
+    alignSelf: 'stretch',
+  },
+
+  winReminderV2: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginVertical: 2,
+  },
+
   orderAvatarsRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'flex-start',
-    paddingHorizontal: 8,
-    paddingBottom: 8,
-    gap: 10,
+    height: 80,
+    maxHeight: 80,
+    marginBottom: 6,
+    paddingVertical: 0,
+    gap: 28,
     flexWrap: 'wrap',
+    overflow: 'hidden',
   },
   orderAvatarCell: { alignItems: 'center', width: 76 },
-  orderAvatarRing: {
-    borderRadius: 999,
-    padding: 3,
+  orderAvatarCellDim: { opacity: 0.5 },
+  avatarRingWrap: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarPulseRing: {
+    position: 'absolute',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     borderWidth: 2,
-    borderColor: 'transparent',
+    borderColor: ACCENT_PURPLE,
   },
-  orderAvatarRingOn: {
-    borderColor: '#a855f7',
-    shadowColor: '#a855f7',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.65,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  orderCountBadge: {
-    marginTop: 4,
-    backgroundColor: '#15803d',
+  orderAvatarInner: { borderRadius: 999, overflow: 'hidden' },
+  orderCountBadgeV2: {
+    marginTop: 2,
+    backgroundColor: SURFACE_1,
     borderRadius: 999,
-    minWidth: 28,
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderWidth: 2,
-    borderColor: '#fff',
+    paddingVertical: 2,
   },
-  orderCountBadgeText: { color: '#fff', fontWeight: '900', fontSize: 13, textAlign: 'center' },
-  orderAvatarName: {
-    marginTop: 4,
-    color: 'rgba(255,255,255,0.88)',
-    fontSize: 10,
+  orderCountBadgeTextV2: { color: '#fff', fontSize: 10, fontWeight: '800' },
+  orderAvatarNameV2: {
+    marginTop: 2,
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '800',
+    textAlign: 'center',
+    maxWidth: 76,
+  },
+
+  table: { marginTop: 4, marginBottom: 6, minHeight: 0 },
+  feltTable: {
+    height: 100,
+    maxHeight: 100,
+    backgroundColor: FELT_BG,
+    borderRadius: 16,
+    marginHorizontal: 8,
+    paddingHorizontal: 6,
+    paddingTop: 4,
+    paddingBottom: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.28)',
+    shadowColor: '#166534',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 14,
+    elevation: 8,
+    overflow: 'hidden',
+  },
+  feltRoundRank: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 2,
+    width: '100%',
+  },
+  centerZone: {
+    flex: 1,
+    minHeight: 0,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pileStack: { alignItems: 'center', gap: 2 },
+  pileCardStackVertical: {
+    width: 42,
+    position: 'relative',
+    alignSelf: 'center',
+  },
+  pileCardLayer: {
+    position: 'absolute',
+    left: 2,
+  },
+  pileEmptyV2: {
+    width: 52,
+    height: 58,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: SURFACE_1,
+  },
+  pileEmptyTextV2: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 9,
     fontWeight: '700',
     textAlign: 'center',
-    maxWidth: 72,
+    paddingHorizontal: 4,
   },
-  claimCenter: { alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 8 },
-  claimCenterText: {
-    color: '#F0FDF4',
-    fontSize: 18,
-    fontWeight: '900',
-    textAlign: 'center',
-    lineHeight: 24,
-  },
+
+  // ─── Recent claims (horizontal chip scroller) ─────────────────────────────
   historyBox: {
     alignSelf: 'stretch',
     marginHorizontal: 12,
-    marginBottom: 10,
-    padding: 10,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    gap: 4,
+    marginBottom: 6,
+    maxHeight: 36,
   },
-  historyTitle: { color: 'rgba(255,255,255,0.5)', fontWeight: '800', fontSize: 10, letterSpacing: 0.8 },
-  historyPillsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  historyPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    maxWidth: '100%',
-  },
-  historyPillText: { color: 'rgba(255,255,255,0.9)', fontSize: 11, fontWeight: '700' },
-  table: { flex: 1, paddingHorizontal: 6 },
-  seat: { position: 'absolute', alignItems: 'center', zIndex: 2 },
-  seatTop: { top: 4, alignSelf: 'center' },
-  seatTopCenter: { top: 4, left: 0, right: 0, alignItems: 'center' },
-  seatTopLeft: { top: 8, left: 4 },
-  seatTopRight: { top: 8, right: 4 },
-  seatMidLeft: { left: 4, top: '32%' },
-  seatMidRight: { right: 4, top: '32%' },
-  namePill: {
+  historyPillsRow: { flexDirection: 'row', gap: 6, paddingHorizontal: 12, paddingRight: 40, alignItems: 'center' },
+  historyPillV2: {
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 8,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    maxWidth: 120,
-    marginBottom: 4,
+    borderRadius: 16,
+    backgroundColor: SURFACE_1,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    maxWidth: 220,
   },
-  namePillActive: { backgroundColor: 'rgba(250, 204, 21, 0.35)', borderWidth: 1, borderColor: '#facc15' },
-  namePillText: { color: '#ecfdf5', fontWeight: '700', fontSize: 12, textAlign: 'center' },
-  countBadge: {
+  historyPillRecent: {
+    borderColor: 'rgba(124,58,237,0.65)',
+    backgroundColor: 'rgba(124,58,237,0.12)',
+  },
+  historyPillTextV2: { fontSize: 10, fontWeight: '700' },
+  historyTextYou: { color: ACCENT_PURPLE },
+  historyTextAi: { color: 'rgba(255,255,255,0.5)' },
+
+  bsBtn: {
+    alignSelf: 'stretch',
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  bsBtnGlowOuter: {
+    alignSelf: 'stretch',
+    marginHorizontal: 12,
+    marginBottom: 0,
+    borderRadius: 12,
+  },
+  bsBtnActive: {
+    backgroundColor: DANGER_RED,
+    height: 44,
+    maxHeight: 44,
+    paddingVertical: 0,
+    paddingHorizontal: 16,
+  },
+  bsBtnMutedV2: {
+    alignSelf: 'stretch',
+    marginHorizontal: 12,
+    marginBottom: 0,
+    backgroundColor: SURFACE_1,
+    height: 44,
+    maxHeight: 44,
+    paddingVertical: 0,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bsBtnPulseRing: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 14,
+    borderWidth: 3,
+    borderColor: '#FCA5A5',
+  },
+  bsBtnTextActive: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  bsBtnTextMutedV2: { color: '#6b7280', fontSize: 14, fontWeight: '800' },
+
+  humanPanelOuter: { overflow: 'hidden', paddingHorizontal: 8, marginBottom: 0 },
+  humanPanel: {
+    paddingHorizontal: 8,
+    paddingBottom: 0,
+    gap: 6,
+    alignItems: 'center',
+  },
+  qtyRowOuter: {
+    height: 36,
+    maxHeight: 36,
+    marginVertical: 4,
+    justifyContent: 'center',
+    alignSelf: 'stretch',
+  },
+  qtyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'nowrap',
+    justifyContent: 'center',
+  },
+  qtyHint: { color: 'rgba(255,255,255,0.7)', fontWeight: '700', marginRight: 2, fontSize: 11 },
+  qtyChipV2: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    backgroundColor: CHIP_UNSELECTED,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qtyChipV2On: {
+    backgroundColor: ACCENT_PURPLE,
+    transform: [{ scale: 1.1 }],
+  },
+  qtyChipOff: { opacity: 0.3 },
+  qtyChipTextV2: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  qtyChipTextV2On: { color: '#fff' },
+  playBtnWrap: {
+    alignSelf: 'stretch',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  playBtnGradV2: {
+    height: 44,
+    maxHeight: 44,
+    paddingVertical: 0,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playBtnInactiveV2: {
+    backgroundColor: SURFACE_2,
+    height: 44,
+    maxHeight: 44,
+    paddingVertical: 0,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playBtnInactiveTextV2: { color: '#9ca3af', fontWeight: '800', fontSize: 14 },
+  playBtnTextV2: { color: '#fff', fontWeight: '900', fontSize: 14, letterSpacing: 0.3 },
+
+  handDock: { marginTop: 'auto', alignSelf: 'stretch' },
+  handMeta: { paddingHorizontal: 12, paddingBottom: 2, paddingTop: 0, alignItems: 'center' },
+  handMetaTextV2: {
+    color: 'rgba(255,255,255,0.5)',
+    fontWeight: '700',
+    fontSize: 10,
+    textAlign: 'center',
+  },
+
+  handScrollOuter: {
+    flexGrow: 0,
+    flexShrink: 0,
+    height: 90,
+    maxHeight: 90,
+    marginBottom: 0,
+    overflow: 'hidden',
+  },
+  handRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingHorizontal: 12,
+    paddingRight: 48,
+    paddingTop: 2,
+    paddingBottom: 2,
+  },
+  handCardPressable: { zIndex: 1 },
+  handCardWrap: { zIndex: 1 },
+  handCardLocked: { opacity: 0.35 },
+  handCardBody: {
+    borderRadius: 10,
+    borderWidth: 2.5,
+    borderColor: 'transparent',
+    overflow: 'hidden',
+  },
+  handCardBodyOnV2: {
+    borderColor: ACCENT_PURPLE,
+    shadowColor: ACCENT_PURPLE,
+    shadowOpacity: 0.85,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 8,
+  },
+  multiSelectBadge: {
     position: 'absolute',
     top: -4,
-    right: -8,
-    backgroundColor: '#15803d',
-    borderRadius: 999,
-    minWidth: 26,
+    right: -4,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: ACCENT_PURPLE,
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 6,
-    paddingVertical: 2,
-    zIndex: 4,
     borderWidth: 2,
     borderColor: '#fff',
   },
-  countBadgeText: { color: '#fff', fontWeight: '900', fontSize: 13, textAlign: 'center' },
-  opponentArc: { flexDirection: 'row', alignItems: 'flex-end' },
-  oppCardSlot: {},
-  centerZone: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 200,
-  },
-  pileStack: { alignItems: 'center', gap: 8 },
-  pileBadge: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-  },
-  pileBadgeBig: { color: '#fff', fontSize: 36, fontWeight: '900' },
-  pileBadgeSub: { color: 'rgba(255,255,255,0.75)', fontSize: 12, fontWeight: '600' },
-  handMeta: {
-    paddingHorizontal: 16,
-    paddingBottom: 6,
-    alignItems: 'center',
-  },
-  handMetaText: { color: '#dcfce7', fontWeight: '800', fontSize: 13 },
-  bsBtn: {
-    alignSelf: 'stretch',
-    marginHorizontal: 8,
-    marginBottom: 10,
-    backgroundColor: '#b91c1c',
-    paddingVertical: 20,
-    paddingHorizontal: 20,
-    borderRadius: 18,
-    borderWidth: 4,
-    borderColor: '#fecaca',
-    alignItems: 'center',
-    gap: 6,
-    minHeight: 72,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 10,
-  },
-  bsBtnMuted: { opacity: 0.5, borderColor: 'rgba(254,202,202,0.45)' },
-  bsBtnText: { color: '#fff', fontSize: 24, fontWeight: '900', letterSpacing: 0.5 },
-  bsBtnHint: { color: 'rgba(255,255,255,0.88)', fontSize: 11, fontWeight: '700' },
-  humanPanelOuter: {
-    overflow: 'hidden',
-    paddingHorizontal: 8,
-  },
-  humanPanel: {
-    paddingHorizontal: 12,
-    paddingBottom: 8,
-    gap: 8,
-    alignItems: 'center',
-  },
-  panelLabel: { color: '#ecfccb', fontWeight: '800', fontSize: 15 },
-  qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'center' },
-  qtyHint: { color: 'rgba(255,255,255,0.85)', fontWeight: '700', marginRight: 4 },
-  qtyChip: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  qtyChipOn: { backgroundColor: '#15803d', borderColor: '#bbf7d0' },
-  qtyChipOff: { opacity: 0.35 },
-  qtyChipText: { color: '#fff', fontWeight: '800' },
-  qtyChipTextOn: { color: '#fff' },
-  playBtn: {
-    backgroundColor: '#facc15',
-    paddingVertical: 12,
-    paddingHorizontal: 28,
-    borderRadius: 12,
-  },
-  playBtnDisabled: { opacity: 0.4 },
-  playBtnText: { color: '#422006', fontWeight: '900', fontSize: 16 },
-  handRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'flex-end',
-    paddingBottom: 14,
-    minHeight: 120,
-    paddingHorizontal: 8,
-  },
-  handCardWrap: { zIndex: 1 },
-  handRing: {
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  handRingOn: { borderColor: '#facc15', shadowColor: '#facc15', shadowOpacity: 0.6, shadowRadius: 8 },
+  multiSelectBadgeText: { color: '#fff', fontSize: 11, fontWeight: '900' },
+
   cardFace: {
     borderRadius: 10,
-    backgroundColor: '#fffef8',
-    borderWidth: 2,
-    borderColor: '#d4d4d4',
+    backgroundColor: '#fff',
     overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  cardCorner: {
-    position: 'absolute',
-    top: 6,
-    left: 6,
-    fontSize: 13,
-    fontWeight: '900',
-    lineHeight: 16,
+  cardFaceHand: {
+    backgroundColor: CARD_WHITE,
   },
-  cardCornerSm: { fontSize: 11, top: 4, left: 4 },
-  cardCenterSuit: { fontSize: 36, fontWeight: '900' },
-  cardCenterSuitSm: { fontSize: 28 },
-  cardBackOuter: { borderColor: '#3f3f46', justifyContent: 'center', alignItems: 'center' },
-  cardBackFill: { backgroundColor: '#2a2a2a' },
-  bsBackText: { color: 'rgba(255,255,255,0.92)', fontWeight: '900', fontSize: 22, letterSpacing: 2 },
-  bsBackTextSm: { fontSize: 16 },
+  cardCornerTL: { position: 'absolute', top: 4, left: 5, alignItems: 'center' },
+  cardCornerTLSm: { top: 4, left: 5 },
+  cardCornerBR: {
+    position: 'absolute',
+    bottom: 4,
+    right: 5,
+    alignItems: 'center',
+    transform: [{ rotate: '180deg' }],
+  },
+  cardCornerBRSm: { bottom: 4, right: 5 },
+  cardCornerRank: { fontSize: 13, fontWeight: '900', lineHeight: 15 },
+  /** Hand/reveal card rank label — 15px per spec. */
+  cardCornerRankSm: { fontSize: 15, lineHeight: 17 },
+  cardCornerSuit: { fontSize: 12, fontWeight: '900', lineHeight: 13 },
+  cardCornerSuitSm: { fontSize: 13, lineHeight: 14 },
+  cardCenterSuit: { fontSize: 32, fontWeight: '900' },
+  /** Hand/reveal card center suit glyph — sized for 68×92 hand cards. */
+  cardCenterSuitSm: { fontSize: 30 },
+  cardCornerRankHand: { fontSize: 13, lineHeight: 15, fontWeight: '900' },
+  cardCornerSuitHand: { fontSize: 13, lineHeight: 14, fontWeight: '900' },
+  cardCenterSuitHand: { fontSize: 32, fontWeight: '900' },
+  /** Pile/back card — dark navy fill with a purple 1px border and bold "BS" text. */
+  cardBackOuter: {
+    borderRadius: 10,
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: ACCENT_PURPLE,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  /** "BS" label on the face-down pile/fly/flip-front card — 12px per spec. */
+  bsBackText: {
+    color: ACCENT_PURPLE,
+    fontWeight: '900',
+    fontSize: 12,
+    letterSpacing: 2,
+  },
+  bsBackTextSm: { fontSize: 12 },
+
+  // ─── Fly/flip animation elements ──────────────────────────────────────────
   flyWrap: {
     position: 'absolute',
     alignSelf: 'center',
@@ -1242,21 +1841,110 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  flipRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
-  flipHint: {
-    color: 'rgba(255,255,255,0.9)',
-    fontWeight: '800',
-    marginBottom: 6,
-    textAlign: 'center',
+  /** Static centered row used when there are ≤3 revealed cards (fits on any phone). */
+  flipRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    paddingHorizontal: 8,
   },
-  claimFace: {
-    backgroundColor: '#fef3c7',
-    borderColor: '#f59e0b',
+  /** Horizontal-ScrollView content style for ≥4 revealed cards. Same visual rhythm
+   *  as `flipRow` but left-aligned so the ScrollView can pan the row into view. */
+  flipRowScroll: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: 12,
+  },
+  /** Per-card column: the card itself on top, a small caption ("claimed" or
+   *  "actual") underneath, consistent horizontal margin so neighbouring cards
+   *  don't touch. */
+  flipSlot: {
+    alignItems: 'center',
+    marginHorizontal: 5,
+  },
+  flipSlotLabel: {
+    marginTop: 6,
+    color: ACCENT_PURPLE,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  flipActualCardBorder: {
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#fff',
+    padding: 2,
+  },
+  flipSlotLabelActual: {
+    marginTop: 6,
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  /** Reference card body for the purple-bordered "claimed" card. Same white face
+   *  as a regular CardFace, but a 3px ACCENT_PURPLE border + large centered suit. */
+  claimedRefCard: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    borderWidth: 3,
+    borderColor: ACCENT_PURPLE,
+    padding: 4,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  claimFaceText: { fontSize: 28, fontWeight: '900', color: '#92400e' },
-  claimFaceSub: { fontSize: 11, fontWeight: '700', color: '#b45309', marginTop: 2 },
+  claimedRefCenterSuit: {
+    fontSize: 40,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  claimedRefCardCompact: {
+    borderRadius: 6,
+    borderWidth: 2,
+    padding: 1,
+  },
+  claimedRefCenterSuitCompact: {
+    fontSize: 13,
+  },
+  flipRevealTitle: {
+    textAlign: 'center',
+    marginBottom: 12,
+    paddingHorizontal: 8,
+  },
+  flipRevealTitleLarge: { fontSize: 20, fontWeight: '800' },
+  flipRevealTitleCompact: {
+    fontSize: 10,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 2,
+    paddingHorizontal: 4,
+    lineHeight: 12,
+  },
+  flipSlotLabelCompact: {
+    marginTop: 2,
+    color: ACCENT_PURPLE,
+    fontSize: 7,
+    fontWeight: '900',
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+  },
+  flipSlotLabelActualCompact: {
+    marginTop: 2,
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 7,
+    fontWeight: '900',
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+  },
+  flipActualCardBorderCompact: {
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#fff',
+    padding: 1,
+  },
+  // ─── Setup / pre-game screen ──────────────────────────────────────────────
   setupHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1264,19 +1952,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingTop: 4,
   },
-  setupTitle: { color: '#ecfdf5', fontSize: 18, fontWeight: '800' },
+  setupTitle: { color: '#fff', fontSize: 18, fontWeight: '800' },
   setupBody: { flex: 1, padding: 20, justifyContent: 'center' },
   setupLabel: { color: 'rgba(255,255,255,0.9)', fontWeight: '800', marginBottom: 10 },
   rowGap: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
   chip: {
     paddingVertical: 10,
     paddingHorizontal: 18,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderRadius: 999,
+    backgroundColor: SURFACE_1,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(255,255,255,0.06)',
   },
-  chipOn: { backgroundColor: '#15803d', borderColor: '#86efac' },
+  chipOn: { backgroundColor: ACCENT_PURPLE, borderColor: ACCENT_PURPLE },
   chipText: { color: '#fff', fontWeight: '800' },
   chipTextOn: { color: '#fff' },
   startBtnWrap: {
@@ -1287,13 +1975,13 @@ const styles = StyleSheet.create({
   },
   startBtnGrad: {
     paddingVertical: 14,
-    paddingHorizontal: 40,
+    paddingHorizontal: 44,
     alignItems: 'center',
   },
-  startBtnText: { color: '#422006', fontWeight: '900', fontSize: 17 },
+  startBtnText: { color: '#fff', fontWeight: '900', fontSize: 17, letterSpacing: 0.3 },
   rulesHint: {
     marginTop: 24,
-    color: 'rgba(255,255,255,0.75)',
+    color: 'rgba(255,255,255,0.55)',
     fontSize: 13,
     lineHeight: 20,
     textAlign: 'center',

@@ -35,4 +35,9 @@ export type UnoGameState = {
   wildPicker: UnoSeat | null;
   drawStack: number;
   aiDifficulty: UnoDifficulty;
+  /**
+   * True when the human player has drawn cards this turn (draw-until-playable
+   * rule): they must now either play a playable card or click Pass.
+   */
+  playerHasDrawn: boolean;
 };

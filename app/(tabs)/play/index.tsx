@@ -164,9 +164,14 @@ function GameCard({
             <View style={styles.nameRow}>
               <Text style={styles.gameName}>{game.name}</Text>
               {game.isNew && (
-                <View style={styles.newBadge}>
+                <LinearGradient
+                  colors={['#7C3AED', '#FF6FD8']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.newBadge}
+                >
                   <Text style={styles.newBadgeText}>New</Text>
-                </View>
+                </LinearGradient>
               )}
             </View>
             <Text style={styles.metaLine}>
@@ -205,6 +210,7 @@ function GameCard({
 
 export default function PlayScreen() {
   const [query, setQuery] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -245,8 +251,13 @@ export default function PlayScreen() {
           Solo practice or host a room — your call.
         </ThemedText>
 
-        <View style={styles.searchWrap}>
-          <MaterialIcons name="search" size={22} color={AppColors.muted} style={styles.searchIcon} />
+        <View style={[styles.searchWrap, searchFocused && styles.searchWrapFocused]}>
+          <MaterialIcons
+            name="search"
+            size={22}
+            color={searchFocused ? '#7C3AED' : AppColors.muted}
+            style={styles.searchIcon}
+          />
           <TextInput
             value={query}
             onChangeText={setQuery}
@@ -256,6 +267,8 @@ export default function PlayScreen() {
             autoCorrect={false}
             autoCapitalize="none"
             clearButtonMode="while-editing"
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
           />
         </View>
 
@@ -304,9 +317,17 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
     backgroundColor: AppColors.card,
     borderRadius: 14,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: AppColors.cardBorder,
     paddingHorizontal: Spacing.sm,
+  },
+  searchWrapFocused: {
+    borderColor: '#7C3AED',
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 8,
+    elevation: 6,
   },
   searchIcon: { marginRight: 6 },
   searchInput: {
@@ -319,7 +340,7 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: Spacing.sm,
-    paddingBottom: Spacing.lg + Spacing.md,
+    paddingBottom: 100,
     gap: SECTION_GAP,
   },
   sectionBlock: { gap: Spacing.sm },
@@ -363,14 +384,11 @@ const styles = StyleSheet.create({
   },
   gameName: { color: AppColors.text, fontSize: 20, fontWeight: '800' },
   newBadge: {
-    backgroundColor: 'rgba(124, 58, 237, 0.35)',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(167, 139, 250, 0.5)',
   },
-  newBadgeText: { color: '#E9D5FF', fontSize: 11, fontWeight: '800' },
+  newBadgeText: { color: '#fff', fontSize: 11, fontWeight: '900', letterSpacing: 0.4 },
   metaLine: { color: AppColors.muted, fontSize: 13, fontWeight: '600', marginBottom: 6 },
   subtitle: { color: AppColors.muted, lineHeight: 20 },
   actionsRow: {

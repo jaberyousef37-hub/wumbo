@@ -99,6 +99,9 @@ export default function TriviaScreen() {
   const [streak, setStreak] = useState(0);
   const [roundQuestions, setRoundQuestions] = useState<Question[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** The 1.5s "reveal answer" delay between questions after picking / timing out.
+   *  Tracked so it can be cleared on unmount and never fires state updates on a dead screen. */
+  const answerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const triviaRecordedRef = useRef(false);
 
   const questions = roundQuestions;
@@ -191,10 +194,21 @@ export default function TriviaScreen() {
       } else {
         setStreak(0);
       }
-      setTimeout(finishQuestionTransition, 1500);
+      if (answerTimeoutRef.current) clearTimeout(answerTimeoutRef.current);
+      answerTimeoutRef.current = setTimeout(() => {
+        answerTimeoutRef.current = null;
+        finishQuestionTransition();
+      }, 1500);
     },
     [showResult, gameOver, question, finishQuestionTransition, difficulty]
   );
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (answerTimeoutRef.current) clearTimeout(answerTimeoutRef.current);
+    };
+  }, []);
 
   const startQuiz = useCallback((d: TriviaDifficulty) => {
     const picked = pickQuizQuestions(d, QUESTIONS_PER_ROUND).map(bankToScreenQuestion);

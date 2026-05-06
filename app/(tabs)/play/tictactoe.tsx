@@ -253,12 +253,12 @@ export default function TicTacToeScreen() {
             </ThemedText>
             <View style={styles.headerScores}>
               <View style={styles.headerScoreItem}>
-                <ThemedText style={styles.headerScoreLabel} darkColor="rgba(255,255,255,0.9)">X</ThemedText>
+                <ThemedText style={styles.headerScoreLabel} darkColor="rgba(255,255,255,0.9)">You</ThemedText>
                 <ThemedText style={styles.headerScoreVal} darkColor="#fff">{wins}</ThemedText>
               </View>
               <View style={styles.headerScoreDivider} />
               <View style={styles.headerScoreItem}>
-                <ThemedText style={styles.headerScoreLabel} darkColor="rgba(255,255,255,0.9)">O</ThemedText>
+                <ThemedText style={styles.headerScoreLabel} darkColor="rgba(255,255,255,0.9)">Opponent</ThemedText>
                 <ThemedText style={styles.headerScoreVal} darkColor="#fff">{losses}</ThemedText>
               </View>
             </View>

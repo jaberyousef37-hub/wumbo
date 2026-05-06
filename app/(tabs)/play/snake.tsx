@@ -182,9 +182,18 @@ export default function SnakeScreen() {
   }, [gameOver, score, highScore]);
 
   useEffect(() => {
+    let cancelled = false;
     void AsyncStorage.getItem('snake_high_score').then((v) => {
-      if (v) setHighScore(parseInt(v, 10));
+      if (cancelled || !v) return;
+      const parsed = parseInt(v, 10);
+      if (Number.isNaN(parsed)) return;
+      // Merge instead of overwrite: if a new best was set before this read resolved,
+      // keep the larger value rather than clobbering it with the stale persisted one.
+      setHighScore((prev) => Math.max(prev, parsed));
     });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {

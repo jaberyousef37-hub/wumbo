@@ -21,6 +21,8 @@ import type { RewardBreakdown } from '@/lib/game-rewards';
 type WinnerModalProps = {
   visible: boolean;
   winnerName: string;
+  /** Overrides the default title formatting derived from `winnerName`. */
+  title?: string;
   score?: { wins: number; losses: number };
   subtitle?: string;
   rewards?: RewardBreakdown | null;
@@ -31,6 +33,7 @@ type WinnerModalProps = {
 export function WinnerModal({
   visible,
   winnerName,
+  title,
   score,
   subtitle,
   rewards,
@@ -75,11 +78,13 @@ export function WinnerModal({
               <Animated.View style={contentStyle}>
                 <Text style={styles.trophy}>🏆</Text>
                 <ThemedText style={styles.title}>
-                  {winnerName === 'You'
-                    ? 'You win!'
-                    : /draw|stalemate/i.test(winnerName)
-                      ? winnerName
-                      : `${winnerName} Wins!`}
+                  {title
+                    ? title
+                    : winnerName === 'You'
+                      ? 'You win!'
+                      : /draw|stalemate/i.test(winnerName)
+                        ? winnerName
+                        : `${winnerName} Wins!`}
                 </ThemedText>
                 {subtitle && (
                   <ThemedText style={styles.subtitle}>{subtitle}</ThemedText>

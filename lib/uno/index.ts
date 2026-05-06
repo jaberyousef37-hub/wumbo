@@ -15,6 +15,7 @@ export {
   completePendingWild,
   completeAiWild,
   playerDrawOne,
+  playerPass,
   acknowledgePlayerUno,
   applyUnoCatchPenalty,
   aiDrawTurn,

@@ -275,6 +275,49 @@ function cloneBoard(b: Board): Board {
   return b.map((row) => [...row]);
 }
 
+/** Detects K v K, K v K+B, K v K+N — the trivial insufficient-material draws.
+ *  Conservative on purpose: only flags positions with at most one minor piece total. */
+function isInsufficientMaterial(b: Board): boolean {
+  const pieces: string[] = [];
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const p = b[r][c];
+      if (p) pieces.push(p);
+    }
+  }
+  if (pieces.length === 2) return true;
+  if (pieces.length === 3) {
+    const minor = pieces.find((p) => {
+      const lp = p.toLowerCase();
+      return lp === 'b' || lp === 'n';
+    });
+    const kings = pieces.filter((p) => p.toLowerCase() === 'k').length;
+    if (kings === 2 && minor) return true;
+  }
+  return false;
+}
+
+/** Hard cap to guarantee the game terminates even if both sides shuffle pieces forever. */
+const MAX_HALFMOVES = 200;
+
+/** Returns the gameOver string (or null) given the position AFTER a move, the side to move next,
+ *  and the running halfmove count after the move. */
+function evaluateGameEnd(
+  nextBoard: Board,
+  sideToMoveIsWhite: boolean,
+  totalHalfmovesAfter: number,
+): string | null {
+  const inCheckNow = isInCheck(nextBoard, sideToMoveIsWhite);
+  const hasMove = hasAnyLegalMove(nextBoard, sideToMoveIsWhite);
+  if (!hasMove) {
+    if (inCheckNow) return sideToMoveIsWhite ? 'Black wins!' : 'White wins!';
+    return 'Draw (stalemate)';
+  }
+  if (isInsufficientMaterial(nextBoard)) return 'Draw (insufficient material)';
+  if (totalHalfmovesAfter > MAX_HALFMOVES) return 'Draw (move limit)';
+  return null;
+}
+
 type AnimState = {
   fr: number;
   fc: number;
@@ -332,6 +375,14 @@ export default function ChessScreen() {
   boardRef.current = board;
   const difficultyRef = useRef(difficulty);
   difficultyRef.current = difficulty;
+  const animRef = useRef<AnimState | null>(anim);
+  animRef.current = anim;
+  /** Hard lock: true while the AI is thinking, computing, or animating its move. Prevents the
+   *  AI useEffect from re-entering and triggering two moves in a row if state desyncs. */
+  const aiThinkingRef = useRef(false);
+  /** Watchdog timer for AI turns. If the AI hasn't completed within 5s we abort and return
+   *  the turn to the player. */
+  const aiTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const ghostX = useSharedValue(0);
   const ghostY = useSharedValue(0);
@@ -448,6 +499,19 @@ export default function ChessScreen() {
     return () => cancelAnimationFrame(id);
   }, [anim, runAnimation]);
 
+  // Final safety net: clear any in-flight AI watchdog when the screen unmounts so timers
+  // never fire against an unmounted component (avoids "Can't perform a React state update" warnings
+  // and keeps memory clean if the user navigates away mid-AI-turn).
+  useEffect(() => {
+    return () => {
+      if (aiTimeoutRef.current) {
+        clearTimeout(aiTimeoutRef.current);
+        aiTimeoutRef.current = null;
+      }
+      aiThinkingRef.current = false;
+    };
+  }, []);
+
   const handleSquarePress = useCallback(
     (row: number, col: number, currentTurn: 'white' | 'black' = currentTurnRef.current) => {
       if (currentTurn !== 'white') return;
@@ -486,6 +550,10 @@ export default function ChessScreen() {
             },
           ]);
           setMoveHistory((h) => [...h, moveToAlgebraic(b, { fr: sr, fc: sc, tr: row, tc: col })]);
+          // Precompute the post-move board so end-state checks operate on the correct position
+          // regardless of when boardRef catches up after the animation.
+          const playerNext = applyMove(b, { fr: sr, fc: sc, tr: row, tc: col });
+          const playerHalfmoveAfter = halfmove + 1;
           startAnimatedMove({ fr: sr, fc: sc, tr: row, tc: col }, b, () => {
             const nb = boardRef.current;
             const moved = nb[row][col]!;
@@ -496,11 +564,10 @@ export default function ChessScreen() {
             setLastMove({ fr: sr, fc: sc, tr: row, tc: col });
             setHalfmove((h) => h + 1);
             setWhiteTurn(false);
-            const blackInCheck = isInCheck(nb, false);
-            const blackMated = blackInCheck && !hasAnyLegalMove(nb, false);
-            if (blackMated) {
-              setGameOver('White wins!');
-              setWins((w) => w + 1);
+            const end = evaluateGameEnd(playerNext, false, playerHalfmoveAfter);
+            if (end) {
+              setGameOver(end);
+              if (end === 'White wins!') setWins((w) => w + 1);
             }
           });
         } else if (piece && isPieceWhite) {
@@ -534,6 +601,11 @@ export default function ChessScreen() {
   );
 
   const handleRestart = useCallback(() => {
+    if (aiTimeoutRef.current) {
+      clearTimeout(aiTimeoutRef.current);
+      aiTimeoutRef.current = null;
+    }
+    aiThinkingRef.current = false;
     setBoard(INITIAL.map((r) => [...r]));
     setWhiteTurn(true);
     setCurrentTurn('white');
@@ -548,11 +620,16 @@ export default function ChessScreen() {
     setAiThinking(false);
     setMoveHistory([]);
     setUndoStack([]);
-  }, []);
+  }, [setCurrentTurn]);
 
   const handleUndo = useCallback(() => {
     if (anim || aiThinking || undoStack.length === 0) return;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (aiTimeoutRef.current) {
+      clearTimeout(aiTimeoutRef.current);
+      aiTimeoutRef.current = null;
+    }
+    aiThinkingRef.current = false;
     const snap = undoStack[undoStack.length - 1];
     const hadOver = gameOver;
     setUndoStack((s) => s.slice(0, -1));
@@ -583,21 +660,54 @@ export default function ChessScreen() {
   }, [handleRestart]);
 
   useEffect(() => {
-    if (gameOver || whiteTurn || difficulty === null || anim) return;
+    if (gameOver || whiteTurn || difficulty === null || animRef.current) return;
+    // Hard guard: never start a second AI turn while one is already in flight.
+    if (aiThinkingRef.current) return;
+
+    aiThinkingRef.current = true;
     let cancelled = false;
     setAiThinking(true);
+
+    const finishAiTurn = () => {
+      aiThinkingRef.current = false;
+      if (aiTimeoutRef.current) {
+        clearTimeout(aiTimeoutRef.current);
+        aiTimeoutRef.current = null;
+      }
+    };
+
+    // Watchdog: if the AI hasn't completed its move within 5s, abort and return turn to player.
+    aiTimeoutRef.current = setTimeout(() => {
+      if (cancelled) return;
+      console.warn('AI timeout');
+      cancelled = true;
+      aiThinkingRef.current = false;
+      aiTimeoutRef.current = null;
+      setAiThinking(false);
+      setWhiteTurn(true);
+      setCurrentTurn('white');
+    }, 5000);
+
     const t = setTimeout(() => {
       if (cancelled) return;
       const b = boardRef.current;
       const diff = difficultyRef.current;
       if (!diff) {
         setAiThinking(false);
+        finishAiTurn();
         return;
       }
       const mv = pickBlackMove(b, diff);
       if (cancelled) return;
       setAiThinking(false);
-      if (!mv) return;
+      if (!mv) {
+        // No legal black move — black is either mated or stalemated. Finalise here.
+        const blackInCheck = isInCheck(b, false);
+        setGameOver(blackInCheck ? 'White wins!' : 'Draw (stalemate)');
+        if (blackInCheck) setWins((w) => w + 1);
+        finishAiTurn();
+        return;
+      }
       const captured = b[mv.tr][mv.tc];
       const f = snapFieldsRef.current;
       setUndoStack((s) => [
@@ -621,12 +731,14 @@ export default function ChessScreen() {
         void playClick();
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
+      // Precompute post-move board for reliable end-state evaluation.
+      const aiNext = applyMove(b, mv);
+      const aiHalfmoveAfter = f.halfmove + 1;
       startAnimatedMove(
         mv,
         b,
         () => {
           if (cancelled) return;
-          const nb = boardRef.current;
           if (captured) {
             if (isWhite(captured)) setCapturedByBlack((prev) => [...prev, captured]);
             else setCapturedByWhite((prev) => [...prev, captured]);
@@ -634,28 +746,31 @@ export default function ChessScreen() {
           setLastMove({ fr: mv.fr, fc: mv.fc, tr: mv.tr, tc: mv.tc });
           setHalfmove((h) => h + 1);
           setWhiteTurn(true);
-          const whiteInCheck = isInCheck(nb, true);
-          const whiteMated = whiteInCheck && !hasAnyLegalMove(nb, true);
-          if (whiteMated) {
-            setGameOver('Black wins!');
-            setLosses((l) => l + 1);
-            setCurrentTurn('black');
-          } else if (!hasAnyLegalMove(nb, true) && !whiteInCheck) {
-            setGameOver('Draw (stalemate)');
+          const end = evaluateGameEnd(aiNext, true, aiHalfmoveAfter);
+          if (end) {
+            setGameOver(end);
+            if (end === 'Black wins!') setLosses((l) => l + 1);
             setCurrentTurn('black');
           } else {
             setCurrentTurn('white');
           }
+          finishAiTurn();
         },
         { durationMs: AI_MOVE_MS },
       );
     }, AI_THINK_DELAY_MS);
+
     return () => {
       cancelled = true;
       clearTimeout(t);
+      if (aiTimeoutRef.current) {
+        clearTimeout(aiTimeoutRef.current);
+        aiTimeoutRef.current = null;
+      }
+      aiThinkingRef.current = false;
       setAiThinking(false);
     };
-  }, [whiteTurn, gameOver, difficulty, anim, startAnimatedMove]);
+  }, [whiteTurn, gameOver, difficulty, startAnimatedMove, setCurrentTurn]);
 
   useEffect(() => {
     if (!gameOver) {
@@ -684,6 +799,17 @@ export default function ChessScreen() {
   const boardLocked = gameOver != null || currentTurn !== 'white';
   const diffLabel =
     difficulty === 'easy' ? 'Easy' : difficulty === 'medium' ? 'Medium' : difficulty === 'hard' ? 'Hard' : '';
+
+  // Player always plays White; convert raw chess-color result strings into player-centric copy.
+  const playerResultTitle: string | null = gameOver
+    ? gameOver === 'White wins!'
+      ? 'You Win! 🏆'
+      : gameOver === 'Black wins!'
+        ? 'You Lost! 😔'
+        : /draw|stalemate/i.test(gameOver)
+          ? 'Draw! 🤝'
+          : gameOver
+    : null;
 
   if (difficulty === null) {
     return (
@@ -842,10 +968,10 @@ export default function ChessScreen() {
           </Pressable>
         </View>
 
-        {gameOver && (
+        {gameOver && playerResultTitle && (
           <View style={styles.resultBanner}>
             <ThemedText type="section" style={{ color: palette.tint }}>
-              {gameOver}
+              {playerResultTitle}
             </ThemedText>
           </View>
         )}
@@ -970,6 +1096,7 @@ export default function ChessScreen() {
       <WinnerModal
         visible={!!gameOver}
         winnerName={gameOver?.replace(' wins!', '') ?? ''}
+        title={playerResultTitle ?? undefined}
         score={{ wins, losses }}
         subtitle={gameOver?.includes('Draw') ? 'Stalemate' : 'Checkmate!'}
         rewards={endRewards}

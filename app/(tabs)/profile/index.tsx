@@ -40,7 +40,6 @@ const SETTINGS = [
   { id: 'edit', label: 'Edit Profile', icon: 'edit' as const },
   { id: 'notifications', label: 'Notifications', icon: 'notifications' as const },
   { id: 'privacy', label: 'Privacy', icon: 'lock' as const },
-  { id: 'logout', label: 'Logout', icon: 'logout' as const },
 ];
 
 const palette = Colors.dark;
@@ -274,28 +273,28 @@ export default function ProfileScreen() {
                     !badge.earned && styles.badgeLockedCell,
                   ]}
                 >
+                  <View style={!badge.earned ? styles.badgeLockedContent : undefined}>
+                    <ThemedText style={styles.badgeEmoji}>{badge.emoji}</ThemedText>
+                    <ThemedText
+                      type="caption"
+                      style={[
+                        styles.badgeName,
+                        !badge.earned && { color: AppColors.muted },
+                      ]}
+                      numberOfLines={2}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.85}
+                    >
+                      {badge.name}
+                    </ThemedText>
+                  </View>
                   {!badge.earned && (
-                    <View style={styles.lockCorner}>
-                      <MaterialIcons name="lock" size={ICON_SIZE_CARD} color={AppColors.muted} />
+                    <View style={styles.lockBadgeOverlay} pointerEvents="none">
+                      <View style={styles.lockIconCircle}>
+                        <MaterialIcons name="lock" size={20} color="#fff" />
+                      </View>
                     </View>
                   )}
-                  <ThemedText
-                    style={[styles.badgeEmoji, !badge.earned && { opacity: 0.35 }]}
-                  >
-                    {badge.emoji}
-                  </ThemedText>
-                  <ThemedText
-                    type="caption"
-                    style={[
-                      styles.badgeName,
-                      !badge.earned && { color: AppColors.muted },
-                    ]}
-                    numberOfLines={2}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.85}
-                  >
-                    {badge.name}
-                  </ThemedText>
                 </View>
               ))}
             </View>
@@ -331,16 +330,49 @@ export default function ProfileScreen() {
                     pressed && styles.pressed,
                   ]}
                 >
-                  <MaterialIcons name={item.icon} size={ICON_SIZE_CARD} color={palette.icon} />
-                  <ThemedText type="body" style={styles.settingsLabel}>
-                    {item.label}
-                  </ThemedText>
-                  <MaterialIcons name="chevron-right" size={ICON_SIZE_CARD} color={AppColors.muted} />
+                  {({ pressed }) => (
+                    <>
+                      <MaterialIcons name={item.icon} size={ICON_SIZE_CARD} color={palette.icon} />
+                      <ThemedText type="body" style={styles.settingsLabel}>
+                        {item.label}
+                      </ThemedText>
+                      <MaterialIcons
+                        name="chevron-right"
+                        size={ICON_SIZE_CARD}
+                        color={pressed ? palette.tint : AppColors.muted}
+                        style={{ transform: [{ translateX: pressed ? 4 : 0 }] }}
+                      />
+                    </>
+                  )}
                 </Pressable>
               ))}
             </View>
           </View>
         </ScrollView>
+        <View style={styles.logoutWrap}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.settingsRow,
+              { backgroundColor: palette.card, borderColor: palette.cardBorder },
+              pressed && styles.pressed,
+            ]}
+          >
+            {({ pressed }) => (
+              <>
+                <MaterialIcons name="logout" size={ICON_SIZE_CARD} color={palette.icon} />
+                <ThemedText type="body" style={styles.settingsLabel}>
+                  Logout
+                </ThemedText>
+                <MaterialIcons
+                  name="chevron-right"
+                  size={ICON_SIZE_CARD}
+                  color={pressed ? palette.tint : AppColors.muted}
+                  style={{ transform: [{ translateX: pressed ? 4 : 0 }] }}
+                />
+              </>
+            )}
+          </Pressable>
+        </View>
       </Animated.View>
     </SafeAreaView>
   );
@@ -478,12 +510,26 @@ const styles = StyleSheet.create({
   badgeLockedCell: {
     backgroundColor: '#141414',
   },
-  lockCorner: {
-    position: 'absolute',
-    top: Spacing.xs,
-    right: Spacing.xs,
+  badgeLockedContent: {
+    opacity: 0.4,
+    alignItems: 'center',
   },
-  badgeEmoji: { fontSize: 22, marginBottom: Spacing.xs },
+  lockBadgeOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lockIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeEmoji: { fontSize: 22, marginBottom: Spacing.xs, textAlign: 'center' },
   badgeName: {
     fontWeight: '600',
     textAlign: 'center',
@@ -502,4 +548,9 @@ const styles = StyleSheet.create({
   },
   settingsLabel: { flex: 1, marginLeft: Spacing.sm },
   pressed: { opacity: 0.9 },
+  logoutWrap: {
+    paddingHorizontal: Spacing.sm,
+    paddingTop: Spacing.sm,
+    paddingBottom: 24,
+  },
 });

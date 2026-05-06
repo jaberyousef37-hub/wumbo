@@ -23,7 +23,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
 import { ThemedText } from '@/components/themed-text';
@@ -101,9 +101,6 @@ const SEND_ACTIVE = '#7C3AED';
 const SEND_DISABLED = '#555555';
 
 const THIRTY_MIN_MS = 30 * 60 * 1000;
-
-/** Initial header height before onLayout (iOS KeyboardAvoidingView offset). */
-const CHAT_HEADER_LAYOUT_HEIGHT = 56;
 
 function reactionsStorageKey(roomId: string): string {
   return `wumbo-chat-reactions-v1-${roomId}`;
@@ -189,10 +186,8 @@ function BubbleTail({ color, align }: { color: string; align: 'left' | 'right' }
 export default function ChatRoomScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const [keyboardOpen, setKeyboardOpen] = useState(false);
-  const [headerHeight, setHeaderHeight] = useState(CHAT_HEADER_LAYOUT_HEIGHT);
 
   const roomId = String(id ?? '1');
   const roomName = ROOM_NAMES[roomId] ?? 'Chat';
@@ -677,8 +672,9 @@ export default function ChatRoomScreen() {
     );
   };
 
-  /** Distance from window top to top of KAV — equals the SafeAreaView's top inset on iOS. */
-  const keyboardVerticalOffset: number = Platform.OS === 'ios' ? insets.top : 0;
+  // KAV measures its own frame, so on iOS we don't need to add the safe-area top inset
+  // here — doing so leaves a black gap between the input bar and the keyboard. Offset 0
+  // lets the input sit flush against the top of the keyboard.
   const mainBottomInset = keyboardOpen ? 0 : tabBarHeight;
 
   return (
@@ -686,9 +682,8 @@ export default function ChatRoomScreen() {
       <SafeAreaView style={styles.flex} edges={['top', 'left', 'right']}>
         <KeyboardAvoidingView
           style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={keyboardVerticalOffset}
-          enabled={Platform.OS === 'ios'}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={0}
         >
           <View
             style={[
@@ -700,7 +695,6 @@ export default function ChatRoomScreen() {
             ]}
           >
             <View
-              onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
               style={[styles.header, { backgroundColor: palette.card, borderBottomColor: palette.cardBorder }]}
             >
               <TouchableOpacity
@@ -998,7 +992,6 @@ const styles = StyleSheet.create({
   sayHiBtnText: { color: '#fff', fontWeight: '700' },
   messagesContent: {
     flexGrow: 1,
-    justifyContent: 'flex-end',
     paddingHorizontal: 14,
     paddingTop: 8,
     paddingBottom: 10,

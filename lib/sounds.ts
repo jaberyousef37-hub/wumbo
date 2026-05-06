@@ -16,6 +16,7 @@ async function loadSound(
     setter(sound);
     return sound;
   } catch {
+    // Sound is non-critical (network may be offline, asset host may be down). Fail silently.
     return null;
   }
 }
@@ -33,7 +34,9 @@ export async function initSounds() {
       loadSound((s) => { swooshSound = s; }, 'https://assets.mixkit.co/active_storage/sfx/2568-swoosh-15.mp3'),
       loadSound((s) => { clickSound = s; }, 'https://assets.mixkit.co/active_storage/sfx/2570-pop-943.mp3'),
     ]);
-  } catch {}
+  } catch (err) {
+    console.error('initSounds failed:', err);
+  }
 }
 
 export async function playPop() {
@@ -41,7 +44,9 @@ export async function playPop() {
     if (popSound) {
       await popSound.replayAsync();
     }
-  } catch {}
+  } catch (err) {
+    console.error('playPop failed:', err);
+  }
 }
 
 export async function playSwoosh() {
@@ -49,7 +54,9 @@ export async function playSwoosh() {
     if (swooshSound) {
       await swooshSound.replayAsync();
     }
-  } catch {}
+  } catch (err) {
+    console.error('playSwoosh failed:', err);
+  }
 }
 
 export async function playClick() {
@@ -57,5 +64,7 @@ export async function playClick() {
     if (clickSound) {
       await clickSound.replayAsync();
     }
-  } catch {}
+  } catch (err) {
+    console.error('playClick failed:', err);
+  }
 }

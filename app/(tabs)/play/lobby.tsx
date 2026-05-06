@@ -127,13 +127,15 @@ export default function LobbyScreen() {
 
   useEffect(() => {
     if (!room) return;
-    console.log('Start game conditions:', {
-      isHost: amHost,
-      playersCount: players.length,
-      minPlayersRequired,
-      roomStatus: room.status,
-      canStartGame,
-    });
+    if (__DEV__) {
+      console.log('Start game conditions:', {
+        isHost: amHost,
+        playersCount: players.length,
+        minPlayersRequired,
+        roomStatus: room.status,
+        canStartGame,
+      });
+    }
   }, [room, amHost, players.length, minPlayersRequired, canStartGame]);
 
   const handleStartGame = () => {

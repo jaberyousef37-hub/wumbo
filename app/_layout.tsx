@@ -43,7 +43,13 @@ function ThemedStack() {
 
 export default function RootLayout() {
   useEffect(() => {
-    const t = setTimeout(() => initSounds().catch(() => {}), 2000);
+    const t = setTimeout(
+      () =>
+        initSounds().catch((err) => {
+          console.error('Failed to initialize sounds:', err);
+        }),
+      2000,
+    );
     return () => clearTimeout(t);
   }, []);
 

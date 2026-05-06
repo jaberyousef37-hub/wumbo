@@ -232,6 +232,22 @@ export default function SnakesLaddersScreen() {
   const positionsRef = useRef(positions);
   positionsRef.current = positions;
 
+  /** Goes true when the screen unmounts. Async roll/animation callbacks check this after
+   *  every `await` and bail out so we never call setState on a dead screen. */
+  const unmountedRef = useRef(false);
+  /** Live dice-face cycling interval id, cleared on unmount if it's still running. */
+  const diceIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      unmountedRef.current = true;
+      if (diceIntervalRef.current) {
+        clearInterval(diceIntervalRef.current);
+        diceIntervalRef.current = null;
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (!winVisible) {
       slCoinRef.current = false;
@@ -306,6 +322,7 @@ export default function SnakesLaddersScreen() {
       const path: number[] = [];
       for (let s = start + 1; s <= land; s++) path.push(s);
       for (const sq of path) {
+        if (unmountedRef.current) return;
         setDisplayPositions((prev) => {
           const next = [...prev];
           next[pi] = sq;
@@ -313,6 +330,7 @@ export default function SnakesLaddersScreen() {
         });
         await new Promise((r) => setTimeout(r, 55));
       }
+      if (unmountedRef.current) return;
 
       const { end: afterSL, kind } = applySnakeOrLadder(land);
       if (kind && afterSL !== land) {
@@ -320,6 +338,7 @@ export default function SnakesLaddersScreen() {
         const slideSteps = Math.min(12, Math.abs(afterSL - land));
         let cur = land;
         for (let k = 0; k < slideSteps; k++) {
+          if (unmountedRef.current) return;
           cur = Math.round(land + ((afterSL - land) * (k + 1)) / slideSteps);
           const c = cur;
           setDisplayPositions((prev) => {
@@ -329,6 +348,7 @@ export default function SnakesLaddersScreen() {
           });
           await new Promise((r) => setTimeout(r, 40));
         }
+        if (unmountedRef.current) return;
         setDisplayPositions((prev) => {
           const next = [...prev];
           next[pi] = afterSL;
@@ -378,12 +398,17 @@ export default function SnakesLaddersScreen() {
       false,
     );
     let f = 0;
-    const interval = setInterval(() => {
+    if (diceIntervalRef.current) clearInterval(diceIntervalRef.current);
+    diceIntervalRef.current = setInterval(() => {
       f += 1;
       setDiceFace(1 + (f % 6));
     }, 70);
     await new Promise((r) => setTimeout(r, 520));
-    clearInterval(interval);
+    if (diceIntervalRef.current) {
+      clearInterval(diceIntervalRef.current);
+      diceIntervalRef.current = null;
+    }
+    if (unmountedRef.current) return;
     setDiceFace(roll);
     diceShake.value = withTiming(0, { duration: 120 });
     setDiceRolling(false);
